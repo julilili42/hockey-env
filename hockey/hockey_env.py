@@ -891,12 +891,12 @@ from gymnasium.envs.registration import register
 try:
   register(
     id='Hockey-v0',
-    entry_point='laserhockey.hockey_env:HockeyEnv',
+    entry_point='hockey.hockey_env:HockeyEnv',
     kwargs={'mode': 0}
   )
   register(
     id='Hockey-One-v0',
-    entry_point='laserhockey.hockey_env:HockeyEnv_BasicOpponent',
+    entry_point='hockey.hockey_env:HockeyEnv_BasicOpponent',
     kwargs={'mode': 0, 'weak_opponent': False}
   )
 except Exception as e:
