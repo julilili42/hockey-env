@@ -27,16 +27,18 @@ def main():
     optParser.add_option('-s', '--seed',action='store',  type='int',
                          dest='seed',default=None,
                          help='random seed (default %default)')
+    optParser.add_option('-c', '--checkpoint', action='store', type='string',
+                         dest='checkpoint', default=None, 
+                         help='Path to checkpoint (.pth). If set: skip training and render only.')
     opts, args = optParser.parse_args()
 
     
     random_seed = opts.seed
-    if random_seed is not None:
-        torch.manual_seed(random_seed)
-        np.random.seed(random_seed)
-
-
     env_name = opts.env_name
+    checkpoint = opts.checkpoint
+
+
+
     # creating environment
     if env_name == "LunarLander-v2":
         env = gym.make(env_name, continuous = True)
@@ -44,11 +46,23 @@ def main():
         env = gym.make(env_name)
 
     
+    if random_seed is not None:
+        torch.manual_seed(random_seed)
+        np.random.seed(random_seed)
     
+
+
     trainer = Train(opts, env)
-    trainer.train_loop()
-    trainer.save_statistics()
-    trainer.render_env()
+
+    if checkpoint is not None:
+        print(f"Loading checkpoint: {opts.checkpoint}")
+        trainer.load_checkpoint(opts.checkpoint)
+        trainer.render_env()
+    else:
+        trainer.train_loop()
+        trainer.save_statistics()
+        trainer.plot_rewards()
+        trainer.render_env()
 
 if __name__ == '__main__':
     main()

@@ -2,6 +2,7 @@ import numpy as np
 import pickle
 import gymnasium as gym
 import torch
+import matplotlib.pyplot as plt
 from ddpg_actor import DDPGAgent
 
 class Train:
@@ -32,9 +33,6 @@ class Train:
     self.log_interval = 20    # print avg reward in the interval
 
   def train_loop(self):
-    
-
-    # training loop
     for episode in range(1, self.max_episodes+1):
         ob, _ = self.env.reset()
         self.ddpg.reset()
@@ -51,8 +49,9 @@ class Train:
             
             if done or trunc: 
               break
-
-        self.losses.extend(self.ddpg.train(self.train_iter))
+        
+        if episode > 10:
+          self.losses.extend(self.ddpg.train(self.train_iter))
 
         self.rewards.append(total_reward)
         self.lengths.append(t)
@@ -80,14 +79,44 @@ class Train:
       
 
   def render_env(self):
-        eval_env = gym.make(self.env_name, render_mode="human")
-        obs, _ = eval_env.reset()
-        self.ddpg.reset()
+    eval_env = gym.make(self.env_name, render_mode="human")
+    obs, _ = eval_env.reset()
+    self.ddpg.reset()
 
-        for _ in range(200):
-            action = self.ddpg.act(obs, eps=0.0)  
-            obs, reward, done, trunc, _ = eval_env.step(action)
-            if done or trunc:
-                break
+    for _ in range(2000):
+        action = self.ddpg.act(obs, eps=0.0)  
+        obs, reward, done, trunc, _ = eval_env.step(action)
+        if done or trunc:
+            break
 
-        eval_env.close()
+    eval_env.close()
+
+
+  def load_checkpoint(self, path):
+    state = torch.load(path, map_location="cpu")
+    self.ddpg.restore_state(state)
+
+
+  def plot_rewards(self, window=20):
+    rewards = np.array(self.rewards)
+
+    plt.figure()
+    plt.plot(rewards, alpha=0.4, label="episode reward")
+
+    if len(rewards) >= window:
+        moving_avg = np.convolve(
+            rewards, np.ones(window) / window, mode="valid"
+        )
+        plt.plot(
+            range(window - 1, len(rewards)),
+            moving_avg,
+            label=f"{window}-episode avg"
+        )
+
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.title(f"DDPG on {self.env_name}")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
