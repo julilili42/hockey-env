@@ -42,7 +42,7 @@ class Train:
         for t in range(self.max_timesteps):
             self.timestep += 1
             a = self.ddpg.act(ob)
-            (ob_new, reward, done, trunc, info) = self.env.step(a)
+            (ob_new, reward, done, trunc, _) = self.env.step(a)
             total_reward+= reward
             self.ddpg.store_transition((ob, a, reward, ob_new, done))
             ob=ob_new
@@ -53,25 +53,24 @@ class Train:
         if episode > 10:
           self.losses.extend(self.ddpg.train(self.train_iter))
 
+
+        
+
         self.rewards.append(total_reward)
         self.lengths.append(t)
 
-        # winner of episode
-        winner = info.get("winner", 0)
-        win = 1 if winner == 1 else 0
-        self.wins.append(win)
-
-        window = 50
-        if len(self.wins) >= window:
-            self.winrate.append(np.mean(self.wins[-window:]))
-        else:
-            self.winrate.append(np.mean(self.wins))
+        eps_now = self.ddpg.ac.eps
 
         # save every 500 episodes
         if episode % 500 == 0:
             print("########## Saving a checkpoint... ##########")
-            torch.save(self.ddpg.state(), f'./results/DDPG_{self.env_name}_{episode}-eps{self.eps}-t{self.train_iter}-l{self.lr}-s{self.random_seed}.pth')
+            torch.save(self.ddpg.state(), f'./results/DDPG_{self.env_name}_{episode}-eps{eps_now}-t{self.train_iter}-l{self.lr}-s{self.random_seed}.pth')
             self.save_statistics()
+
+        if episode % 100 == 0:
+          winrate_eval = self.evaluate(episodes=20)
+          self.winrate.append((episode, winrate_eval))
+          print(f"Episode {episode} | Winrate (eps=0): {winrate_eval:.3f}")
 
         # logging
         if episode % self.log_interval == 0: 
@@ -79,6 +78,9 @@ class Train:
             avg_length = int(np.mean(self.lengths[-self.log_interval:]))
 
             print('Episode {} \t avg length: {} \t reward: {}'.format(episode, avg_length, avg_reward))
+
+        # exploration scheduling
+        self.ddpg.ac.eps = max(0.05, self.ddpg.ac.eps * 0.999)
 
     return self.rewards, self.losses
 
@@ -88,6 +90,25 @@ class Train:
       pickle.dump({"rewards" : self.rewards, "lengths": self.lengths, "eps": self.eps, "train": self.train_iter,
                   "lr": self.lr, "losses": self.losses, "wins": self.wins, "winrate": self.winrate}, f)
       
+
+  def evaluate(self, episodes=20):
+    eval_env = gym.make(self.env_name)
+    wins = []
+
+    for episode in range(episodes):
+        obs, _ = eval_env.reset(seed=episode)
+        done = trunc = False
+
+        while not (done or trunc):
+            action = self.ddpg.act(obs, eps=0.0)  
+            obs, _, done, trunc, info = eval_env.step(action)
+
+        winner = info.get("winner", 0)
+        wins.append(1 if winner == 1 else 0)
+
+    eval_env.close()
+    return np.mean(wins)
+
 
   def render_env(self):
     eval_env = gym.make(self.env_name)
@@ -136,9 +157,11 @@ class Train:
     plt.show()
 
 
-  def plot_winrate(self, window=50):
+  def plot_winrate(self):
+    episodes, winrates = zip(*self.winrate)
+
     plt.figure()
-    plt.plot(self.winrate, label=f"Winrate (window={window})")
+    plt.plot(episodes, winrates, label="Winrate (eval, eps=0)")
     plt.xlabel("Episode")
     plt.ylabel("Winrate")
     plt.ylim(0, 1)
@@ -147,3 +170,4 @@ class Train:
     plt.legend()
     plt.tight_layout()
     plt.show()
+

@@ -36,8 +36,8 @@ class DDPGAgent(object):
         self.action_space = action_space
         self.action_n = action_space.shape[0]
         self.config = {
-            "eps": 0.05,            # Epsilon: noise strength to add to policy
-            "discount": 0.95,
+            "eps": 0.2,            # Epsilon: noise strength to add to policy
+            "discount": 0.99,
             "buffer_size": int(1e6),
             "batch_size": 128,
             "learning_rate_actor": 1e-4,
@@ -47,7 +47,7 @@ class DDPGAgent(object):
             "polyak": 0.995,
             "policy_noise": 0.2,       
             "noise_clip": 0.5,         
-            "policy_delay": 1,         
+            "policy_delay": 2,         
 
         }
         self.config.update(userconfig)
