@@ -27,6 +27,8 @@ class Train:
     self.rewards = []
     self.lengths = []
     self.losses = []
+    self.wins = []
+    self.winrate = []
     self.timestep = 0
     self.log_interval = 20    # print avg reward in the interval
 
@@ -40,7 +42,7 @@ class Train:
         for t in range(self.max_timesteps):
             self.timestep += 1
             a = self.ddpg.act(ob)
-            (ob_new, reward, done, trunc, _) = self.env.step(a)
+            (ob_new, reward, done, trunc, info) = self.env.step(a)
             total_reward+= reward
             self.ddpg.store_transition((ob, a, reward, ob_new, done))
             ob=ob_new
@@ -53,6 +55,17 @@ class Train:
 
         self.rewards.append(total_reward)
         self.lengths.append(t)
+
+        # winner of episode
+        winner = info.get("winner", 0)
+        win = 1 if winner == 1 else 0
+        self.wins.append(win)
+
+        window = 50
+        if len(self.wins) >= window:
+            self.winrate.append(np.mean(self.wins[-window:]))
+        else:
+            self.winrate.append(np.mean(self.wins))
 
         # save every 500 episodes
         if episode % 500 == 0:
@@ -73,21 +86,24 @@ class Train:
   def save_statistics(self):
     with open(f"./results/DDPG_{self.env_name}-eps{self.eps}-t{self.train_iter}-l{self.lr}-s{self.random_seed}-stat.pkl", 'wb') as f:
       pickle.dump({"rewards" : self.rewards, "lengths": self.lengths, "eps": self.eps, "train": self.train_iter,
-                  "lr": self.lr, "losses": self.losses}, f)
+                  "lr": self.lr, "losses": self.losses, "wins": self.wins, "winrate": self.winrate}, f)
       
 
   def render_env(self):
-    eval_env = gym.make(self.env_name, render_mode="human")
+    eval_env = gym.make(self.env_name)
     obs, _ = eval_env.reset()
+    eval_env.render()          
     self.ddpg.reset()
 
-    for _ in range(2000):
-        action = self.ddpg.act(obs, eps=0.0)  
-        obs, reward, done, trunc, _ = eval_env.step(action)
+    for _ in range(10000):
+        action = self.ddpg.act(obs, eps=0.0)
+        obs, _, done, trunc, _ = eval_env.step(action)
+        eval_env.render()      
         if done or trunc:
             break
 
     eval_env.close()
+
 
 
   def load_checkpoint(self, path):
@@ -116,5 +132,18 @@ class Train:
     plt.title(f"DDPG on {self.env_name}")
     plt.legend()
     plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+  def plot_winrate(self, window=50):
+    plt.figure()
+    plt.plot(self.winrate, label=f"Winrate (window={window})")
+    plt.xlabel("Episode")
+    plt.ylabel("Winrate")
+    plt.ylim(0, 1)
+    plt.title(f"Winrate on {self.env_name}")
+    plt.grid(True)
+    plt.legend()
     plt.tight_layout()
     plt.show()

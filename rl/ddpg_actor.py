@@ -36,16 +36,19 @@ class DDPGAgent(object):
         self.action_space = action_space
         self.action_n = action_space.shape[0]
         self.config = {
-            "eps": 0.1,            # Epsilon: noise strength to add to policy
-            "discount": 0.99,
+            "eps": 0.05,            # Epsilon: noise strength to add to policy
+            "discount": 0.95,
             "buffer_size": int(1e6),
             "batch_size": 128,
             "learning_rate_actor": 1e-4,
             "learning_rate_critic": 1e-3,
             "hidden_sizes_actor": [128,128],
             "hidden_sizes_critic": [128,128,64],
-            "use_target_net": True,
-            "polyak": 0.98
+            "polyak": 0.995,
+            "policy_noise": 0.2,       
+            "noise_clip": 0.5,         
+            "policy_delay": 1,         
+
         }
         self.config.update(userconfig)
 
@@ -58,6 +61,8 @@ class DDPGAgent(object):
         self.buffer = mem.Memory(max_size=self.config["buffer_size"])
 
         self.train_iter = 0
+        self.total_updates = 0
+
 
     def act(self, observation, eps=None):
         return self.ac.act(observation, eps)
@@ -72,7 +77,7 @@ class DDPGAgent(object):
         self.ac.restore_state(state)
 
     def reset(self):
-        self.ac.reset()
+        pass
     
     def get_buffer_values(self):
         to_torch = lambda x: torch.from_numpy(x.astype(np.float32))
@@ -95,20 +100,21 @@ class DDPGAgent(object):
 
     def train(self, iter_fit=32):
         losses = []
-        self.train_iter+=1
+        self.train_iter += 1
+
         for _ in range(iter_fit):
-            # sample from the replay buffer
             s, a, reward, s_next, done = self.get_buffer_values()
 
-            # critic update
-            fit_loss = self.update_critic(s, a, reward, s_next, done)
+            loss1, loss2 = self.update_critic(s, a, reward, s_next, done)
 
-            # actor update
-            actor_loss = self.update_actor(s)
+            self.total_updates += 1
 
-            if self.config["use_target_net"]:
-                self.ac.parameter_update()
+            if self.total_updates % self.config["policy_delay"] == 0:
+                actor_loss = self.update_actor(s)
+                self.ac.parameter_update_polyak()
 
-            losses.append((fit_loss, actor_loss.item()))
+                losses.append((loss1, loss2, actor_loss.item()))
+            else:
+                losses.append((loss1, loss2, None))
 
         return losses

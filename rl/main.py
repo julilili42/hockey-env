@@ -6,8 +6,6 @@ from train import Train
 import hockey.hockey_env 
 
 def main():
-    print(gym.envs.registry.keys())
-
     optParser = optparse.OptionParser()
     optParser.add_option('-e', '--env',action='store', type='string',
                          dest='env_name',default="Hockey-One-v0",
@@ -57,6 +55,7 @@ def main():
         trainer.train_loop()
         trainer.save_statistics()
         trainer.plot_rewards()
+        trainer.plot_winrate()
         trainer.render_env()
 
 if __name__ == '__main__':
