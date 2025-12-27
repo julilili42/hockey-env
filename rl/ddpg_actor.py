@@ -31,31 +31,31 @@ class DDPGAgent(object):
             raise UnsupportedSpace('Action space {} incompatible with {}.' \
                                    ' (Require Box)'.format(action_space, self))
 
-        self._observation_space = observation_space
-        self._obs_dim=self._observation_space.shape[0]
-        self._action_space = action_space
-        self._action_n = action_space.shape[0]
-        self._config = {
+        self.observation_space = observation_space
+        self.obs_dim=self.observation_space.shape[0]
+        self.action_space = action_space
+        self.action_n = action_space.shape[0]
+        self.config = {
             "eps": 0.1,            # Epsilon: noise strength to add to policy
-            "discount": 0.95,
+            "discount": 0.99,
             "buffer_size": int(1e6),
             "batch_size": 128,
-            "learning_rate_actor": 0.00001,
-            "learning_rate_critic": 0.0001,
+            "learning_rate_actor": 1e-4,
+            "learning_rate_critic": 1e-3,
             "hidden_sizes_actor": [128,128],
             "hidden_sizes_critic": [128,128,64],
-            "update_target_every": 100,
-            "use_target_net": True
+            "use_target_net": True,
+            "polyak": 0.98
         }
-        self._config.update(userconfig)
+        self.config.update(userconfig)
 
         self.ac = ActorCritic(
-            obs_dim=self._obs_dim,
+            obs_dim=self.obs_dim,
             action_space=action_space,
-            config=self._config
+            config=self.config
         )
         
-        self.buffer = mem.Memory(max_size=self._config["buffer_size"])
+        self.buffer = mem.Memory(max_size=self.config["buffer_size"])
 
         self.train_iter = 0
 
@@ -76,7 +76,7 @@ class DDPGAgent(object):
     
     def get_buffer_values(self):
         to_torch = lambda x: torch.from_numpy(x.astype(np.float32))
-        data=self.buffer.sample(batch=self._config['batch_size'])
+        data=self.buffer.sample(batch=self.config['batch_size'])
 
         s = to_torch(np.stack(data[:,0])) # s_t
         a = to_torch(np.stack(data[:,1])) # a_t
@@ -96,8 +96,6 @@ class DDPGAgent(object):
     def train(self, iter_fit=32):
         losses = []
         self.train_iter+=1
-        if self._config["use_target_net"] and self.train_iter % self._config["update_target_every"] == 0:
-            self.ac.hard_update()
         for _ in range(iter_fit):
             # sample from the replay buffer
             s, a, reward, s_next, done = self.get_buffer_values()
@@ -108,7 +106,9 @@ class DDPGAgent(object):
             # actor update
             actor_loss = self.update_actor(s)
 
+            if self.config["use_target_net"]:
+                self.ac.parameter_update()
+
             losses.append((fit_loss, actor_loss.item()))
 
         return losses
-

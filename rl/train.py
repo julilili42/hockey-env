@@ -13,7 +13,6 @@ class Train:
     self.train_iter = opts.train              # update networks for given batched after every episode
     self.lr  = opts.lr                        # learning rate of DDPG policy
     self.random_seed = opts.seed
-    self.update_every = opts.update_every
     self.max_episodes = opts.max_episodes     # max training episodes
     self.max_timesteps = 2000                 # max timesteps in one episode
     ##############################################
@@ -22,8 +21,7 @@ class Train:
     self.observation_space = env.observation_space
     self.action_space = env.action_space
     
-    self.ddpg = DDPGAgent(self.observation_space, self.action_space, eps = self.eps, learning_rate_actor = self.lr,
-                      update_target_every = self.update_every)
+    self.ddpg = DDPGAgent(self.observation_space, self.action_space, eps = self.eps, learning_rate_actor = self.lr)
     
     # logging variables
     self.rewards = []
@@ -75,7 +73,7 @@ class Train:
   def save_statistics(self):
     with open(f"./results/DDPG_{self.env_name}-eps{self.eps}-t{self.train_iter}-l{self.lr}-s{self.random_seed}-stat.pkl", 'wb') as f:
       pickle.dump({"rewards" : self.rewards, "lengths": self.lengths, "eps": self.eps, "train": self.train_iter,
-                  "lr": self.lr, "update_every": self.update_every, "losses": self.losses}, f)
+                  "lr": self.lr, "losses": self.losses}, f)
       
 
   def render_env(self):

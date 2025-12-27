@@ -7,6 +7,7 @@ class ActorCritic:
     self.obs_dim = obs_dim
     self.config = config
     self.eps = self.config['eps']
+    self.rho = self.config['polyak']
     self.action_space = action_space
     self.action_dim = action_space.shape[0]
     self.action_noise = OUNoise((self.action_dim))
@@ -39,7 +40,7 @@ class ActorCritic:
                                   hidden_sizes= self.config["hidden_sizes_critic"],
                                   learning_rate = 0)
 
-    self.hard_update()
+    self.parameter_update()
 
 
   def act(self, observation, eps=None):
@@ -53,14 +54,20 @@ class ActorCritic:
     return low + (action + 1.0) * 0.5 * (high - low)
 
 
-  def hard_update(self):
-    self.critic_target.load_state_dict(self.critic.state_dict())
-    self.actor_target.load_state_dict(self.actor.state_dict())
+  def parameter_update(self):
+    with torch.no_grad():
+      for p, p_targ in zip(self.critic.parameters(), self.critic_target.parameters()):
+          p_targ.mul_(self.rho)
+          p_targ.add_((1 - self.rho) * p.data)
+
+      for p, p_targ in zip(self.actor.parameters(), self.actor_target.parameters()):
+          p_targ.mul_(self.rho)
+          p_targ.add_((1 - self.rho) * p.data)
 
   def restore_state(self, state):
     self.actor.load_state_dict(state["actor"])
     self.critic.load_state_dict(state["critic"])
-    self.hard_update()
+    self.parameter_update()
 
   def state(self):
     return {

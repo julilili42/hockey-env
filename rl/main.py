@@ -3,11 +3,14 @@ import numpy as np
 import gymnasium as gym
 import optparse
 from train import Train
+import hockey.hockey_env 
 
 def main():
+    print(gym.envs.registry.keys())
+
     optParser = optparse.OptionParser()
     optParser.add_option('-e', '--env',action='store', type='string',
-                         dest='env_name',default="Pendulum-v1",
+                         dest='env_name',default="Hockey-One-v0",
                          help='Environment (default %default)')
     optParser.add_option('-n', '--eps',action='store',  type='float',
                          dest='eps',default=0.1,
@@ -21,29 +24,21 @@ def main():
     optParser.add_option('-m', '--maxepisodes',action='store',  type='float',
                          dest='max_episodes',default=2000,
                          help='number of episodes (default %default)')
-    optParser.add_option('-u', '--update',action='store',  type='float',
-                         dest='update_every',default=100,
-                         help='number of episodes between target network updates (default %default)')
     optParser.add_option('-s', '--seed',action='store',  type='int',
                          dest='seed',default=None,
                          help='random seed (default %default)')
     optParser.add_option('-c', '--checkpoint', action='store', type='string',
                          dest='checkpoint', default=None, 
                          help='Path to checkpoint (.pth). If set: skip training and render only.')
-    opts, args = optParser.parse_args()
+    opts, _ = optParser.parse_args()
 
     
     random_seed = opts.seed
-    env_name = opts.env_name
     checkpoint = opts.checkpoint
 
-
-
-    # creating environment
-    if env_name == "LunarLander-v2":
-        env = gym.make(env_name, continuous = True)
-    else:
-        env = gym.make(env_name)
+    # create environment
+    env_name = opts.env_name
+    env = gym.make(env_name)
 
     
     if random_seed is not None:
