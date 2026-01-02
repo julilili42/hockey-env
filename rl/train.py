@@ -4,12 +4,12 @@ import gymnasium as gym
 import torch
 import matplotlib.pyplot as plt
 from ddpg_actor import DDPGAgent
+from device import device
 
 class Train:
   def __init__(self, opts, env):
     ############## Hyperparameters ##############
     self.env_name = opts.env_name 
-    self.eps = opts.eps                       # noise of DDPG policy
     self.train_iter = opts.train              # update networks for given batched after every episode
     self.lr  = opts.lr                        # learning rate of DDPG policy
     self.random_seed = opts.seed
@@ -21,8 +21,8 @@ class Train:
     self.observation_space = env.observation_space
     self.action_space = env.action_space
     
-    self.ddpg = DDPGAgent(self.observation_space, self.action_space, eps = self.eps, learning_rate_actor = self.lr)
-    
+    self.ddpg = DDPGAgent(env=self.env, learning_rate_actor = self.lr)
+
     # logging variables
     self.rewards = []
     self.lengths = []
@@ -38,13 +38,24 @@ class Train:
         self.ddpg.reset()
         total_reward=0
 
-
         for t in range(self.max_timesteps):
             self.timestep += 1
-            a = self.ddpg.act(ob)
-            (ob_new, reward, done, trunc, _) = self.env.step(a)
+            a_norm = self.ddpg.act(ob, return_norm=True)
+            a_norm_t = torch.as_tensor(a_norm, dtype=torch.float32, device=device)
+            a_env = self.ddpg.scaler.scale_action(a_norm_t).detach().cpu().numpy()
+
+            (ob_new, reward, done, trunc, _) = self.env.step(a_env)
+            
+            s_norm = self.ddpg.scaler.normalize_obs(ob)
+    
+            terminal = done or trunc        
+
+            self.ddpg.store_transition((ob, a_env, reward, ob_new, terminal))
+
+            assert torch.all(s_norm <= 1.0) and torch.all(s_norm >= -1.0)
+            assert np.all(a_norm <= 1.0) and np.all(a_norm >= -1.0)
+
             total_reward+= reward
-            self.ddpg.store_transition((ob, a, reward, ob_new, done))
             ob=ob_new
             
             if done or trunc: 
@@ -53,24 +64,20 @@ class Train:
         if episode > 10:
           self.losses.extend(self.ddpg.train(self.train_iter))
 
-
-        
-
         self.rewards.append(total_reward)
         self.lengths.append(t)
 
-        eps_now = self.ddpg.ac.eps
 
         # save every 500 episodes
         if episode % 500 == 0:
             print("########## Saving a checkpoint... ##########")
-            torch.save(self.ddpg.state(), f'./results/DDPG_{self.env_name}_{episode}-eps{eps_now}-t{self.train_iter}-l{self.lr}-s{self.random_seed}.pth')
+            torch.save(self.ddpg.state(), f'./results/DDPG_{self.env_name}_{episode}-t{self.train_iter}-l{self.lr}-s{self.random_seed}.pth')
             self.save_statistics()
 
         if episode % 100 == 0:
           winrate_eval = self.evaluate(episodes=20)
           self.winrate.append((episode, winrate_eval))
-          print(f"Episode {episode} | Winrate (eps=0): {winrate_eval:.3f}")
+          print(f"Episode {episode} | Winrate: {winrate_eval:.3f}")
 
         # logging
         if episode % self.log_interval == 0: 
@@ -79,15 +86,15 @@ class Train:
 
             print('Episode {} \t avg length: {} \t reward: {}'.format(episode, avg_length, avg_reward))
 
-        # exploration scheduling
-        self.ddpg.ac.eps = max(0.05, self.ddpg.ac.eps * 0.999)
 
     return self.rewards, self.losses
 
 
+
+
   def save_statistics(self):
-    with open(f"./results/DDPG_{self.env_name}-eps{self.eps}-t{self.train_iter}-l{self.lr}-s{self.random_seed}-stat.pkl", 'wb') as f:
-      pickle.dump({"rewards" : self.rewards, "lengths": self.lengths, "eps": self.eps, "train": self.train_iter,
+    with open(f"./results/DDPG_{self.env_name}-t{self.train_iter}-l{self.lr}-s{self.random_seed}-stat.pkl", 'wb') as f:
+      pickle.dump({"rewards" : self.rewards, "lengths": self.lengths, "train": self.train_iter,
                   "lr": self.lr, "losses": self.losses, "wins": self.wins, "winrate": self.winrate}, f)
       
 
@@ -100,7 +107,7 @@ class Train:
         done = trunc = False
 
         while not (done or trunc):
-            action = self.ddpg.act(obs, eps=0.0)  
+            action = self.ddpg.act(obs, noise=False)  
             obs, _, done, trunc, info = eval_env.step(action)
 
         winner = info.get("winner", 0)
@@ -117,7 +124,7 @@ class Train:
     self.ddpg.reset()
 
     for _ in range(10000):
-        action = self.ddpg.act(obs, eps=0.0)
+        action = self.ddpg.act(obs, noise=False)
         obs, _, done, trunc, _ = eval_env.step(action)
         eval_env.render()      
         if done or trunc:
@@ -161,7 +168,7 @@ class Train:
     episodes, winrates = zip(*self.winrate)
 
     plt.figure()
-    plt.plot(episodes, winrates, label="Winrate (eval, eps=0)")
+    plt.plot(episodes, winrates, label="Winrate")
     plt.xlabel("Episode")
     plt.ylabel("Winrate")
     plt.ylim(0, 1)

@@ -10,9 +10,6 @@ def main():
     optParser.add_option('-e', '--env',action='store', type='string',
                          dest='env_name',default="Hockey-One-v0",
                          help='Environment (default %default)')
-    optParser.add_option('-n', '--eps',action='store',  type='float',
-                         dest='eps',default=0.1,
-                         help='Policy noise (default %default)')
     optParser.add_option('-t', '--train',action='store',  type='int',
                          dest='train',default=32,
                          help='number of training batches per episode (default %default)')

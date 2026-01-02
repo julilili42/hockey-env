@@ -1,15 +1,19 @@
 import torch
 from networks import MLP, QNetwork
 import numpy as np
+from device import device
+
 
 class ActorCritic:
-  def __init__(self, obs_dim, action_space, config):
+  def __init__(self, obs_dim, action_space, config, scaler):
     self.obs_dim = obs_dim
     self.config = config
-    self.eps = self.config['eps']
     self.rho = self.config['polyak']
     self.action_space = action_space
     self.action_dim = action_space.shape[0]
+
+    # Scaler
+    self.scaler = scaler
 
     # Actor
     self.actor = MLP(input_size=self.obs_dim,
@@ -24,6 +28,7 @@ class ActorCritic:
                             activation_fun = torch.nn.ReLU(),
                             output_activation = torch.nn.Tanh())
     
+    self.actor.to(device)
     self.actor_optim=torch.optim.Adam(self.actor.parameters(), lr=self.config["learning_rate_actor"], eps=0.000001)
 
 
@@ -47,19 +52,37 @@ class ActorCritic:
                                   hidden_sizes= self.config["hidden_sizes_critic"],
                                   learning_rate = 0)
 
+
+    self.actor.to(device)
+    self.actor_target.to(device)
+
+    self.critic1.to(device)
+    self.critic2.to(device)
+    self.critic1_target.to(device)
+    self.critic2_target.to(device)
+
+    self.actor_target.eval()
+    self.critic1_target.eval()
+    self.critic2_target.eval()
+
+    for p in self.actor_target.parameters():
+        p.requires_grad = False
+    for p in self.critic1_target.parameters():
+        p.requires_grad = False
+    for p in self.critic2_target.parameters():
+        p.requires_grad = False
+    
     self.parameter_update_hard()
 
+    
 
-  def act(self, observation, eps=None):
-    if eps is None:
-        eps = self.eps
 
-    action = self.actor.predict(observation)
-    noise = np.random.normal(0, eps, size=action.shape)
-    action = action + noise
+  # observation must be normalized!
+  def act(self, obs_norm_t: torch.Tensor):
+    with torch.no_grad():
+        a = self.actor(obs_norm_t.to(device))
+    return torch.clamp(a, -1.0, 1.0)
 
-    low, high = self.action_space.low, self.action_space.high
-    return np.clip(low + (action + 1.0) * 0.5 * (high - low), low, high)
 
 
   def parameter_update_hard(self):
@@ -95,36 +118,54 @@ class ActorCritic:
         "critic2": self.critic2.state_dict()
     }
 
-  def update_critic(self, s, a, reward, s_next, done):
+  def update_critic(self, s_env, a_env, reward, s_next_env, done, s_next_norm, weights):
     with torch.no_grad():
-      a_next = self.actor_target(s_next)
+      # target policy im norm-space
+      a_next_norm = self.actor_target(s_next_norm)
 
-      noise = torch.randn_like(a_next) * self.config["policy_noise"]
+      noise = torch.randn_like(a_next_norm) * self.config["policy_noise"]
       noise = torch.clamp(noise, -self.config["noise_clip"], self.config["noise_clip"])
-      a_next = torch.clamp(a_next + noise, -1.0, 1.0)
+      a_next_norm = torch.clamp(a_next_norm + noise, -1.0, 1.0)
 
-      q1_next = self.critic1_target.Q_value(s_next, a_next)
-      q2_next = self.critic2_target.Q_value(s_next, a_next)
+      # -> env-space für den Critic
+      a_next_env = self.scaler.scale_action(a_next_norm)
+
+      q1_next = self.critic1_target.Q_value(s_next_env, a_next_env)
+      q2_next = self.critic2_target.Q_value(s_next_env, a_next_env)
       q_next = torch.min(q1_next, q2_next)
 
       target = reward + self.config["discount"] * (1.0 - done) * q_next
 
-    loss1 = self.critic1.fit(s, a, target)
-    loss2 = self.critic2.fit(s, a, target)
+    loss1, td1 = self.critic1.fit(s_env, a_env, target, weights)
+    loss2, td2 = self.critic2.fit(s_env, a_env, target, weights)
 
-    return loss1, loss2
+    td_error = 0.5 * (td1 + td2)
+    td_error = td_error.squeeze(1).cpu().numpy()
+    return loss1, loss2, td_error
 
 
-  def update_actor(self, s):
+
+
+  def update_actor(self, s_norm, s_env):
     self.actor_optim.zero_grad()
-    # predicted action by actor
-    a = self.actor.forward(s)
 
-    # q value of state and action by critic
-    q = self.critic1.Q_value(s, a)
-    actor_loss = -torch.mean(q)
+    a_norm = self.actor(s_norm)              # norm-space
+    a_env  = self.scaler.scale_action(a_norm) # env-space
+
+    for p in self.critic1.parameters():
+      p.requires_grad = False
+
+    q = self.critic1.Q_value(s_env, a_env)
+    actor_loss = -q.mean()
+
+    for p in self.critic1.parameters():
+        p.requires_grad = True
+
+
     actor_loss.backward()
     self.actor_optim.step()
-
     return actor_loss
+
+
+
   

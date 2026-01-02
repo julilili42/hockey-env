@@ -23,8 +23,13 @@ class MLP(torch.nn.Module):
 
     def predict(self, x):
         with torch.no_grad():
-            return self.forward(torch.from_numpy(x.astype(np.float32))).numpy()
-
+            return (
+                self.forward(
+                    torch.from_numpy(x.astype(np.float32)).to(next(self.parameters()).device)
+                )
+                .cpu()
+                .numpy()
+            )
 
 class QNetwork(MLP):
     def __init__(self, observation_dim, action_dim, hidden_sizes=[100,100],
@@ -36,19 +41,23 @@ class QNetwork(MLP):
                                         eps=0.000001)
         self.loss = torch.nn.SmoothL1Loss()
 
-    def fit(self, observations, actions, targets): # all arguments should be torch tensors
-        self.train() # put model in training mode
+    def fit(self, observations, actions, targets, weights=None):
         self.optimizer.zero_grad()
-        # Forward pass
+        pred = self.Q_value(observations, actions)  # (B,1)
 
-        pred = self.Q_value(observations,actions)
-        # Compute Loss
-        loss = self.loss(pred, targets)
+        if weights is None:
+            loss = self.loss(pred, targets)
+            td_error = torch.abs(pred - targets).detach()
+        else:
+            w = weights.view(-1, 1)  # (B,1)
+            per_sample = torch.nn.functional.smooth_l1_loss(pred, targets, reduction="none")  # (B,1)
+            loss = (w * per_sample).mean()
+            td_error = torch.abs(pred - targets).detach()
 
-        # Backward pass
         loss.backward()
         self.optimizer.step()
-        return loss.item()
+        return loss.item(), td_error
+
 
     def Q_value(self, observations, actions):
         return self.forward(torch.hstack([observations,actions]))
