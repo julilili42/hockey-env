@@ -40,18 +40,28 @@ class DDPGAgent(object):
         self.action_n = self.action_space.shape[0]
         self.config = {
             "discount": 0.99,
-            "buffer_size": int(1e6),
-            "batch_size": 128,
-            "learning_rate_actor": 1e-4,
-            "learning_rate_critic": 1e-3,
-            "hidden_sizes_actor": [128,128],
-            "hidden_sizes_critic": [128,128,64],
-            "polyak": 0.995,
-            "policy_noise": 0.2,       
-            "noise_clip": 0.5,         
-            "policy_delay": 2,         
 
+            # Replay / Training
+            "buffer_size": int(2e6),     
+            "batch_size": 256,           
+
+            # Learning rates
+            "learning_rate_actor": 1e-4,   
+            "learning_rate_critic": 1e-3,  
+
+            # Network sizes
+            "hidden_sizes_actor": [256, 256],
+            "hidden_sizes_critic": [256, 256, 128],
+
+            # Target update
+            "polyak": 0.99,              
+
+            # TD3-spezifisch
+            "policy_noise": 0.05,         
+            "noise_clip": 0.2,
+            "policy_delay": 2,           
         }
+
         self.config.update(userconfig)
         
         self.scaler = Scaler(env)
@@ -80,19 +90,38 @@ class DDPGAgent(object):
         self.train_iter = 0
         self.total_updates = 0
 
+        self.total_steps = 0
+        self.start_steps = 30_000
 
-    def act(self, observation, noise=True, return_norm=False):
+
+
+    def act(self, observation, noise=True, return_norm=False, count_step=True):
+        if count_step:
+            self.total_steps += 1
+        
+        if self.total_steps < self.start_steps:
+            a_env = self.action_space.sample()
+            if return_norm:
+                a_norm = self.scaler.unscale_action(
+                    torch.tensor(a_env, device=device)
+                )
+                return a_norm.detach().cpu().numpy()
+            return a_env
+
+
         obs_norm = self.scaler.normalize_obs(observation)      
         act_norm_t = self.ac.act(obs_norm)                     
+        
 
         if noise:
-            n = torch.tensor(self.ou_noise(), dtype=torch.float32, device=device)
+            n = torch.tensor(self.ou_noise(), device=device, dtype=torch.float32)
             act_norm_t = torch.clamp(act_norm_t + n, -1.0, 1.0)
+            
 
         if return_norm:
             return act_norm_t.detach().cpu().numpy()
 
-        a_env_t = self.scaler.scale_action(act_norm_t)         
+        a_env_t = self.scaler.scale_action(act_norm_t)    
         return a_env_t.detach().cpu().numpy()
 
 
@@ -111,7 +140,7 @@ class DDPGAgent(object):
         self.ac.restore_state(state)
 
     def reset(self):
-        self.ou_noise.reset()
+        pass
 
     def get_buffer_values(self):
         to_torch = lambda x: torch.from_numpy(
@@ -163,7 +192,8 @@ class DDPGAgent(object):
 
             if self.total_updates % self.config["policy_delay"] == 0:
                 actor_loss = self.ac.update_actor(s_norm, s_env)
-                self.ac.parameter_update_polyak()
+
+            self.ac.parameter_update_polyak()
 
             losses.append((loss1, loss2))
         return losses

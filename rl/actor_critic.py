@@ -147,24 +147,25 @@ class ActorCritic:
 
 
   def update_actor(self, s_norm, s_env):
-    self.actor_optim.zero_grad()
-
-    a_norm = self.actor(s_norm)              # norm-space
-    a_env  = self.scaler.scale_action(a_norm) # env-space
+    self.actor_optim.zero_grad(set_to_none=True)
 
     for p in self.critic1.parameters():
-      p.requires_grad = False
+        p.requires_grad_(False)
 
-    q = self.critic1.Q_value(s_env, a_env)
-    actor_loss = -q.mean()
+    a_norm = torch.clamp(self.actor(s_norm), -0.95, 0.95)
 
-    for p in self.critic1.parameters():
-        p.requires_grad = True
-
+    a_env  = self.scaler.scale_action(a_norm)
+    actor_loss = -self.critic1.Q_value(s_env, a_env).mean()
 
     actor_loss.backward()
     self.actor_optim.step()
+
+    for p in self.critic1.parameters():
+        p.requires_grad_(True)
+
     return actor_loss
+
+
 
 
 

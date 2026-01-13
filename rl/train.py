@@ -32,62 +32,48 @@ class Train:
     self.timestep = 0
     self.log_interval = 20    # print avg reward in the interval
 
+  
+  
   def train_loop(self):
-    for episode in range(1, self.max_episodes+1):
+    for episode in range(1, self.max_episodes + 1):
         ob, _ = self.env.reset()
         self.ddpg.reset()
-        total_reward=0
+        total_reward = 0
 
         for t in range(self.max_timesteps):
             self.timestep += 1
-            a_norm = self.ddpg.act(ob, return_norm=True)
-            a_norm_t = torch.as_tensor(a_norm, dtype=torch.float32, device=device)
-            a_env = self.ddpg.scaler.scale_action(a_norm_t).detach().cpu().numpy()
 
-            (ob_new, reward, done, trunc, _) = self.env.step(a_env)
-            
-            s_norm = self.ddpg.scaler.normalize_obs(ob)
-    
-            terminal = done or trunc        
+            a_env = self.ddpg.act(ob, noise=True, return_norm=False)
 
+            ob_new, reward, done, trunc, _ = self.env.step(a_env)
+
+            terminal = done or trunc
             self.ddpg.store_transition((ob, a_env, reward, ob_new, terminal))
 
-            assert torch.all(s_norm <= 1.0) and torch.all(s_norm >= -1.0)
-            assert np.all(a_norm <= 1.0) and np.all(a_norm >= -1.0)
+            total_reward += reward
+            ob = ob_new
 
-            total_reward+= reward
-            ob=ob_new
-            
-            if done or trunc: 
-              break
-        
+            if terminal:
+                break
+
         if episode > 10:
-          self.losses.extend(self.ddpg.train(self.train_iter))
+            self.losses.extend(self.ddpg.train(self.train_iter))
 
         self.rewards.append(total_reward)
         self.lengths.append(t)
 
-
-        # save every 500 episodes
-        if episode % 500 == 0:
-            print("########## Saving a checkpoint... ##########")
-            torch.save(self.ddpg.state(), f'./results/DDPG_{self.env_name}_{episode}-t{self.train_iter}-l{self.lr}-s{self.random_seed}.pth')
-            self.save_statistics()
-
         if episode % 100 == 0:
-          winrate_eval = self.evaluate(episodes=20)
-          self.winrate.append((episode, winrate_eval))
-          print(f"Episode {episode} | Winrate: {winrate_eval:.3f}")
+            winrate_eval = self.evaluate(episodes=20)
+            self.winrate.append((episode, winrate_eval))
+            print(f"Episode {episode} | Winrate: {winrate_eval:.3f}")
 
-        # logging
-        if episode % self.log_interval == 0: 
+        if episode % self.log_interval == 0:
             avg_reward = np.mean(self.rewards[-self.log_interval:])
             avg_length = int(np.mean(self.lengths[-self.log_interval:]))
-
-            print('Episode {} \t avg length: {} \t reward: {}'.format(episode, avg_length, avg_reward))
-
+            print(f"Episode {episode}\t avg length: {avg_length}\t reward: {avg_reward}")
 
     return self.rewards, self.losses
+
 
 
 
@@ -107,7 +93,7 @@ class Train:
         done = trunc = False
 
         while not (done or trunc):
-            action = self.ddpg.act(obs, noise=False)  
+            action = self.ddpg.act(obs, noise=False, count_step=False)  
             obs, _, done, trunc, info = eval_env.step(action)
 
         winner = info.get("winner", 0)
