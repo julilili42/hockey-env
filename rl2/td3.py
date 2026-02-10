@@ -1,155 +1,140 @@
 import torch
-import torch.nn.functional as F
 import torch.nn as nn
 import numpy as np
 from replay_buffer import ReplayBufferPrioritized as ReplayBuffer
-from ornstein_uhlenbeck import OUActionNoise
+from noise import OUActionNoise
 from scaler import Scaler
 from feedforward import FeedforwardNetwork
-from time import perf_counter
-import gymnasium as gym
-from matplotlib import pyplot as plt
-
-def to_torch(x, device="cpu"):
-    # check if x is torch tensor
-    if isinstance(x, torch.Tensor):
-        return x.to(device, dtype=torch.float32)
-    else:
-        return torch.tensor(x, dtype=torch.float32, device=device)
-
-def weighted_smooth_l1_loss(x, y, weights):
-    # x, y: torch tensors of shape (batch_size, ...)
-    # weights: torch tensor of shape (batch_size
-    # returns: weighted smooth l1 loss
-    if weights is None:
-        weights = torch.ones_like(x)
-    diff = x - y
-    loss = torch.where(
-        torch.abs(diff) < 1,
-        0.5 * weights * diff ** 2,
-        (torch.abs(diff) - 0.5)*weights,
-    )
-    return loss.mean()
+from core.config import TD3Config
+from core.device import device
+from utils.torch_utils import to_torch, weighted_smooth_l1_loss
+from utils.logger import Logger
 
 class TD3:
     def __init__(
         self,
         env,
-        env_string,
-        gamma=0.99,
-        tau_actor=0.005,
-        tau_critic=0.005,
+        config: TD3Config,
         zeta=0.97, # for setting beta
-        lr_q=1e-3,
-        lr_pol=1e-3,
-        wd_q=0.0001,
-        wd_pol=0.0001,
-        batch_size=100,
-        steps_max=1000,
-        start_steps=10,
-        gradient_steps=-1,
-        update_every=1,
-        policy_update_freq=2,
-        epochs=300,
-        buffer_size=100000,
-        action_noise_scale=0.1,
-        target_action_noise_scale=0.2,
-        target_action_noise_clip=0.5,
         h=64,
-        test_interval=10,
-        play_interval=1000,
-        prioritized_replay=True,
-        noise_mode="ornstein-uhlenbeck",
     ):
-        self.device = "cpu"
-        self.debug = False
-        self.env = env
-        self.env_string = env_string
-        self.gamma = gamma
-        self.rho_actor = 1 - tau_actor
-        self.rho_critic = 1 - tau_critic
-        self.batch_size = batch_size
-        self.start_steps = start_steps
-        self.noise_mode = noise_mode
-        self.action_noise_scale = action_noise_scale
-        self.target_action_noise_scale = target_action_noise_scale
-        self.target_action_noise_clip = target_action_noise_clip
-        self.steps_max = steps_max
-        self.gradient_steps = gradient_steps
-        self.iter_fit = gradient_steps
-        self.update_every = update_every
-        self.policy_update_freq = policy_update_freq
-        self.epochs = epochs
-        self.prioritized_replay = prioritized_replay
-        self.prioritized_replay_eps = 1e-6
-        self.zeta = zeta
-        self.beta = 1.0 - zeta / 2.0
-        self.test_interval = test_interval
-        self.play_interval = play_interval
-        self.total_steps = 0
+        self.logger = Logger.get_logger()
+        
 
-        self.replay_buffer = ReplayBuffer(buffer_size=buffer_size, prioritized_replay=prioritized_replay)
+        self.env = env
+        self.cfg = config
+        self.device = device
+        self.total_steps = 0
+        self.train_iter = 0
+
+        self._init_hyperparams(config=config, zeta=zeta)
+
+        self.replay_buffer = ReplayBuffer(buffer_size=config.buffer_size, prioritized_replay=config.prioritized_replay)
 
         n_obs = env.observation_space.shape[0]
         n_act = env.action_space.shape[0]
 
-        q1 = FeedforwardNetwork(n_obs + n_act, 1, act_out=nn.Identity(), h=h)
-        q2 = FeedforwardNetwork(n_obs + n_act, 1, act_out=nn.Identity(), h=h)
-        pol = FeedforwardNetwork(n_obs, n_act, h=h)
+        self.q1, self.q2, self.policy = self._build_networks(n_obs, n_act, h)
 
-        self.q1 = q1
-        self.q2 = q2
-        self.policy = pol
+        self._init_target_networks()
+        self._init_optimizers(config)
 
-        # define target networks
-        self.target_q1 = q1.copy()
-        self.target_q2 = q2.copy()
-        self.target_policy = pol.copy()
+        self.scaler = Scaler(self.env, debug=self.cfg.debug)
+        self.noise_generator = self._init_noise()
 
-        # disable gradients for target networks
-        for p in self.target_q1.parameters():
-            p.requires_grad = False
-        for p in self.target_q2.parameters():
-            p.requires_grad = False
-        for p in self.target_policy.parameters():
-            p.requires_grad = False
-
-        self.q1_optimizer = torch.optim.Adam(
-            self.q1.parameters(), lr=lr_q, eps=0.000001, weight_decay=wd_q
-        )
-        self.q2_optimizer = torch.optim.Adam(
-            self.q2.parameters(), lr=lr_q, eps=0.000001, weight_decay=wd_q
+        self.logger.info(
+            f"TD3 init | obs={n_obs}, act={n_act}, "
+            f"gamma={self.gamma}, batch={self.batch_size}, "
+            f"policy_freq={self.policy_update_freq}, "
+            f"prio_replay={self.prioritized_replay}"
         )
 
-        self.q_loss = weighted_smooth_l1_loss
-        self.pol_loss = lambda x: -((x.mean()) ** 2)
 
-        self.pol_optimizer = torch.optim.Adam(
-            self.policy.parameters(), lr=lr_pol, eps=0.000001, weight_decay=wd_pol
-        )
 
-        # define scaler
-        self.scaler = Scaler(self.env)
-
-        # define noise generator
+    def _init_noise(self):
         if self.noise_mode == "ornstein-uhlenbeck":
-            self.noise_generator = OUActionNoise(
+            return OUActionNoise(
                 mean=np.zeros(self.env.action_space.shape),
                 std_deviation=self.action_noise_scale
                 * np.ones(self.env.action_space.shape),
             )
-        elif self.noise_mode == "gaussian":
-            self.noise_generator = lambda: np.random.normal(
+        if self.noise_mode == "gaussian":
+            return lambda: np.random.normal(
                 0, self.action_noise_scale, self.env.action_space.shape
             )
-        else:
-            raise ValueError("Unknown noise mode")
+        raise ValueError(f"Unknown noise mode: {self.noise_mode}")
 
-        self.train_iter = 0
+
+    def _init_optimizers(self, config):
+        self.q1_optimizer = torch.optim.Adam(
+            self.q1.parameters(), lr=config.lr_q,
+            eps=1e-6, weight_decay=config.wd_q
+        )
+        self.q2_optimizer = torch.optim.Adam(
+            self.q2.parameters(), lr=config.lr_q,
+            eps=1e-6, weight_decay=config.wd_q
+        )
+        self.pol_optimizer = torch.optim.Adam(
+            self.policy.parameters(), lr=config.lr_pol,
+            eps=1e-6, weight_decay=config.wd_pol
+        )
+
+        self.q_loss = weighted_smooth_l1_loss
+
+
+    def _init_target_networks(self):
+        self.target_q1 = self.q1.copy().to(self.device)
+        self.target_q2 = self.q2.copy().to(self.device)
+        self.target_policy = self.policy.copy().to(self.device)
+
+        for net in (self.target_q1, self.target_q2, self.target_policy):
+            for p in net.parameters():
+                p.requires_grad = False
+
+
+    def _build_networks(self, n_obs, n_act, h):
+        q1 = FeedforwardNetwork(
+            n_obs + n_act, 1, act_out=nn.Identity(), h=h
+        ).to(self.device)
+
+        q2 = FeedforwardNetwork(
+            n_obs + n_act, 1, act_out=nn.Identity(), h=h
+        ).to(self.device)
+
+        policy = FeedforwardNetwork(
+            n_obs, n_act, h=h
+        ).to(self.device)
+
+        return q1, q2, policy
+
+
+
+
+    def _init_hyperparams(self, config, zeta):
+        self.gamma = config.gamma
+        self.batch_size = config.batch_size
+        self.start_steps = config.start_steps
+        self.policy_update_freq = config.policy_update_freq
+
+        self.rho_actor = 1 - config.tau_actor
+        self.rho_critic = 1 - config.tau_critic
+
+        self.noise_mode = config.noise_mode
+        self.action_noise_scale = config.action_noise_scale
+        self.target_action_noise_scale = config.target_action_noise_scale
+        self.target_action_noise_clip = config.target_action_noise_clip
+
+        self.prioritized_replay = config.prioritized_replay
+        self.prioritized_replay_eps = 1e-6
+
+        self.zeta = zeta
+        self.beta = 1.0 - zeta / 2.0
+
 
     def reset(self):
         if self.noise_mode == "ornstein-uhlenbeck":
             self.noise_generator.reset()
+            self.logger.debug("OU noise reset")
 
     def update_targets(self, rho=None):
         if rho is None:
@@ -160,48 +145,45 @@ class TD3:
             self.update_target(self.q1, self.target_q1, rho=rho)
             self.update_target(self.q2, self.target_q2, rho=rho)
             self.update_target(self.policy, self.target_policy, rho=rho)
+    
+
+    def _critic(self, net, state, action):
+        #state = self.scaler.unscale_state(state)
+        action = self.scaler.unscale_action(action)
+        x = torch.hstack((state, action))
+
+        if torch.any(torch.isnan(state)) or torch.any(torch.isnan(action)):
+            self.logger.error(
+                f"NaN BEFORE critic | "
+                f"state_nan={torch.isnan(state).any().item()}, "
+                f"action_nan={torch.isnan(action).any().item()}"
+            )
+
+        return net(x).squeeze(-1)
+    
 
     def get_q1(self, state, action):
-        unscaled_state = self.scaler.unscale_state(state)
-        unscaled_action = self.scaler.unscale_action(action)
-
-        combined = torch.hstack((unscaled_state, unscaled_action))
-        us_res = self.q1(combined)
-        res = torch.squeeze(us_res)
-
-        return res
+        return self._critic(self.q1, state, action)
 
     def get_q2(self, state, action):
-        unscaled_state = self.scaler.unscale_state(state)
-        unscaled_action = self.scaler.unscale_action(action)
-
-        combined = torch.hstack((unscaled_state, unscaled_action))
-        us_res = self.q2(combined)
-        res = torch.squeeze(us_res)
-
-        return res
+        return self._critic(self.q2, state, action)
 
     def get_q1_target(self, state, action):
-        unscaled_state = self.scaler.unscale_state(state)
-        unscaled_action = self.scaler.unscale_action(action)
-        return torch.squeeze(
-            self.target_q1(torch.hstack((unscaled_state, unscaled_action)))
-        )
+        return self._critic(self.target_q1, state, action)
 
     def get_q2_target(self, state, action):
-        unscaled_state = self.scaler.unscale_state(state)
-        unscaled_action = self.scaler.unscale_action(action)
-        return torch.squeeze(
-            self.target_q2(torch.hstack((unscaled_state, unscaled_action)))
-        )
+        return self._critic(self.target_q2, state, action)
+
 
     def get_policy_action(self, state):
-        unscaled_state = self.scaler.unscale_state(state)
-        return self.policy(unscaled_state)
+        return self.policy(state)
+        #unscaled_state = self.scaler.unscale_state(state)
+        #return self.policy(unscaled_state)
 
     def get_target_policy_action(self, state):
-        unscaled_state = self.scaler.unscale_state(state)
-        target_action = self.target_policy(unscaled_state)
+        #unscaled_state = self.scaler.unscale_state(state)
+        #target_action = self.target_policy(unscaled_state)
+        target_action = self.target_policy(state)
         # add normal noise
         noise = to_torch(
             torch.normal(0, self.target_action_noise_scale, size=target_action.shape),
@@ -210,6 +192,19 @@ class TD3:
         clamped_noise = torch.clamp(
             noise, -self.target_action_noise_clip, self.target_action_noise_clip
         )
+
+        noisy_action = target_action + clamped_noise
+
+        if self.train_iter % 200 == 0:        
+            self.logger.debug(
+                f"Target policy action | "
+                f"target_mean={target_action.mean().item():.3f}, "
+                f"noise_std={noise.std().item():.3f}, "
+                f"clamped_noise_max={clamped_noise.abs().max().item():.3f}, "
+                f"noisy_min={noisy_action.min().item():.3f}, "
+                f"noisy_max={noisy_action.max().item():.3f}"
+            )
+            
         return torch.clamp(
             target_action + clamped_noise,
             self.scaler.action_low,
@@ -217,84 +212,70 @@ class TD3:
         )
 
     def update_q(self, state, action, reward, next_state, done):
-        # torch.cuda.empty_cache()
-        # print time
+        
         self.q1_optimizer.zero_grad(set_to_none=True)
         self.q2_optimizer.zero_grad(set_to_none=True)
 
-        debug = False
-        start = 0
-        if debug:
-            start = perf_counter()
-        # compute target
         act_target = self.get_target_policy_action(next_state)
-        if debug:
-            print(f"act target took: {perf_counter() - start}")
 
         with torch.no_grad():
-            q1_target_next = self.get_q1_target(next_state, act_target).detach()
-            q2_target_next = self.get_q2_target(next_state, act_target).detach()
-
-        if debug:
-            print(f"q1, q2 targets took: {perf_counter() - start}")
+            q1_target_next = self.get_q1_target(next_state, act_target)
+            q2_target_next = self.get_q2_target(next_state, act_target)
 
         q_target_next = torch.minimum(q1_target_next, q2_target_next)
-
-        if debug:
-            print(f"q target min took: {perf_counter() - start}")
 
         target = torch.squeeze(
             reward + self.gamma * (1 - done) * q_target_next
         ).detach()
 
-        if debug:
-            print(f"q target calc took: {perf_counter() - start}")
-
-        # compute predictions
         pred1 = self.get_q1(state, action)
         pred2 = self.get_q2(state, action)
 
-        if debug:
-            print(f"q1, q2 preds took: {(perf_counter() - start)*self.iter_fit}")
-
         if self.prioritized_replay:
-            # calculate importance sampling weights
             probs = self.replay_buffer.get_last_probs()
             weights = (1 / (probs * self.replay_buffer.size)) ** self.beta
             weights = to_torch(weights / np.max(weights))
         else:
             weights = None
 
-        # compute losses & backpropagate
         loss1 = self.q_loss(pred1, target, weights=weights)
         loss2 = self.q_loss(pred2, target, weights=weights)
 
-        if debug:
-            print(f"q1, q2 loss took: {(perf_counter() - start)*self.iter_fit}")
+        if not torch.isfinite(loss1) or not torch.isfinite(loss2):
+            self.logger.error("Non-finite critic loss detected!")
 
-        loss1.backward(inputs=list(self.q1.parameters()), retain_graph=False)
-        loss2.backward(inputs=list(self.q2.parameters()), retain_graph=False)
 
-        if debug:
-            print(f"q1, q2 backprop took: {(perf_counter() - start)*self.iter_fit}")
+        loss1.backward(inputs=list(self.q1.parameters()))
+        loss2.backward(inputs=list(self.q2.parameters()))
 
         self.q1_optimizer.step()
         self.q2_optimizer.step()
 
-        if debug:
-            print(f"q1, q2 opt step took: {(perf_counter() - start)*self.iter_fit}")
-
-        res = (loss1.item() + loss2.item()) / 2
-
-        # set replay buffer priorities
         if self.prioritized_replay:
-            td_error1 = torch.abs(pred1 - target).detach().cpu().numpy()
-            td_error2 = torch.abs(pred2 - target).detach().cpu().numpy()
-            td_error = (td_error1 + td_error2) / 2
-            priorities = (np.abs(td_error)) + self.prioritized_replay_eps
-            self.replay_buffer.update_priorities(priorities=priorities)
+            td_error = (torch.abs(pred1 - target) + torch.abs(pred2 - target)) / 2
+            priorities = torch.clamp(td_error, 1e-6, 1e6).detach().cpu().numpy()
 
-        return res
+            if not torch.isfinite(td_error).all():
+                self.logger.error(
+                    f"Non-finite TD error | "
+                    f"td_min={td_error.min().item()}, "
+                    f"td_max={td_error.max().item()}"
+                )
+
+            self.replay_buffer.update_priorities(priorities)
+
+
+        if self.train_iter % 200 == 0:
+            self.logger.debug(
+                f"Q update | "
+                f"target_mean={target.mean().item():.3f}, "
+                f"pred1_mean={pred1.mean().item():.3f}, "
+                f"pred2_mean={pred2.mean().item():.3f}"
+            )
+
+
+        return (loss1.item() + loss2.item()) / 2
+
 
     def update_policy(self, state):
         self.pol_optimizer.zero_grad(set_to_none=True)
@@ -308,18 +289,22 @@ class TD3:
         loss.backward(inputs=list(self.policy.parameters()), retain_graph=False)
         self.pol_optimizer.step()
 
+        if self.train_iter % 200 == 0:
+            self.logger.debug(
+                f"Actor update | "
+                f"q_pol_mean={q_pol.mean().item():.3f}, "
+                f"action_std={pol_action.std().item():.3f}"
+            )
+
+
         return loss.item()
 
     def update_step(self, inds=None):
         self.train_iter += 1
 
-        # start = perf_counter()
-        # sample batch
         state, action, reward, next_state, done = self.replay_buffer.sample(
             inds=inds, batch_size=self.batch_size
         )
-        # sample_time = perf_counter() - start
-        # print(f"sample took: {sample_time*self.iter_fit}, buffer size: {self.replay_buffer.size}")
 
         state = to_torch(state, device=self.device)
         action = to_torch(action, device=self.device)
@@ -327,222 +312,55 @@ class TD3:
         next_state = to_torch(next_state, device=self.device)
         done = to_torch(done, device=self.device)
 
-        # print(f"state: {state.shape}, action: {action.shape}, reward: {reward.shape}, next_state: {next_state.shape}, done: {done.shape}")
-        # # print dtypes
-        # print(f"state: {state.dtype}, action: {action.dtype}, reward: {reward.dtype}, next_state: {next_state.dtype}, done: {done.dtype}")
-        # print(reward)
-
-        # start = perf_counter()
-        # update q network
         critic_loss = self.update_q(state, action, reward, next_state, done)
-        # end = perf_counter()
-        # q_time = end - start
-        # print(f"Q time: {q_time*self.iter_fit:.3f}")
 
         actor_loss = None
         if self.train_iter % self.policy_update_freq == 0:
-            # start = perf_counter()
-            # update policy network
             actor_loss = self.update_policy(state)
-            # end = perf_counter()
-            # pol_time = end - start
-            # print(f"Policy time: {pol_time*self.iter_fit:.3f}")
 
         self.update_targets()
 
+        if self.train_iter % 500 == 0:
+            self.logger.info(
+                f"Train iter {self.train_iter} | "
+                f"critic_loss={critic_loss:.4f} | "
+                f"actor_loss={actor_loss}"
+            )
+
+
         return actor_loss, critic_loss
 
-    def get_action(self, state, noise=True):
+    def get_action(self, state, noise=True, eval_mode=False):
+        if not eval_mode:
+            self.total_steps += 1
+
         if self.total_steps < self.start_steps:
-            action = self.env.action_space.sample()
-        else:
-            state = to_torch(state)
-            action = self.get_policy_action(state).detach()
-            if noise:
-                noise = self.noise_generator()
-                action = action + noise
-                if self.scaler.action_scaling:
-                    action = torch.clamp(action, -1, 1)
-            # scale from [-1, 1] to action space scales
-            action = self.scaler.scale_action(action).numpy()
-        return action
+            if self.total_steps % 200 == 0:
+                self.logger.debug(
+                    f"Random action phase | step={self.total_steps}"
+                )
+            return self.env.action_space.sample()
 
-    def train(self):
-        self.total_steps = 0
+        state = to_torch(state, device=self.device)
+        action = self.get_policy_action(state)  # in [-1,1]
 
-        episode_rewards = []
-        test_rewards = []
-        episode_steps = []
-        ep_durations = []
-        upd_durations = []
-        ep_actor_losses = []
-        ep_actor_losses_first = []
-        ep_actor_losses_last = []
+        if noise and not eval_mode:
+            noise_np = self.noise_generator()
+            noise = torch.tensor(noise_np, device=self.device, dtype=torch.float32)
+            action = torch.clamp(action + noise, -1, 1)
 
-        ep_critic_losses = []
-        ep_critic_losses_first = []
-        ep_critic_losses_last = []
-
-        test_interval = self.test_interval
-        play_interval = self.play_interval
-        try:
-            # for epoch in tqdm(range(self.epochs)):
-            for epoch in range(self.epochs):
-                if epoch > 0 and epoch % test_interval == 0:
-                    test_reward = self.test(noise_enabled=False, render_mode=None)
-                    test_rewards.append(test_reward)
-                    # print reward without breaking tqdm
-                    print(
-                        f"""Epoch {epoch}:
-                                rewards: train: {episode_rewards[-1]:.2f}, test: {test_reward:.2f}
-                                            max train reward: {np.max(episode_rewards[-test_interval:]):.2f}
-                                avg_steps: {np.mean(episode_steps[-test_interval:]):.2f}
-                                losses:
-                                    actor: mean: {np.mean(ep_actor_losses[-test_interval:]):.2f}, first: {np.mean(ep_actor_losses_first[-test_interval:]):.2f}, last: {np.mean(ep_actor_losses_last[-test_interval:]):.2f}
-                                    critic: mean: {np.mean(ep_critic_losses[-test_interval:]):.2f}, first: {np.mean(ep_critic_losses_first[-test_interval:]):.2f}, last: {np.mean(ep_critic_losses_last[-test_interval:]):.2f}
-                                avg_duration: {np.mean(ep_durations[-test_interval:]):.2f}, upd_duration: {np.mean(upd_durations[-test_interval:]):.2f}
-                    """
-                    )
-                if epoch > 0 and epoch % (play_interval) == 0:
-                    self.test(noise_enabled=False, render_mode="human")
-
-                start_ep = perf_counter()
-
-                state, info = self.env.reset()
-                self.reset()
-                done = False
-                steps = 0
-                rewards = []
-
-                # start = perf_counter()
-                while not done and steps < self.steps_max:
-                    # get action
-                    # start_act = perf_counter()
-                    action = self.get_action(state)
-                    # print(f"get action took: {(perf_counter() - start_act)*self.steps_max}")
-                    # take action, save transition
-                    next_state, reward, terminated, truncated, _ = self.env.step(action)
-                    done = terminated or truncated
-
-                    self.replay_buffer.push(state, action, reward, next_state, done)
-                    state = next_state
-                    steps += 1
-                    self.total_steps += 1
-                    rewards.append(reward)
-
-                # print(f"Episode w/o updt took: {perf_counter() - start}")
-
-                ep_duration = perf_counter() - start_ep
-                ep_durations.append(ep_duration)
-
-                episode_steps.append(steps)
-                ep_reward = np.sum(rewards)
-                episode_rewards.append(ep_reward)
-
-                self.beta = 1.0 - self.zeta**epoch / 2
-
-                if (
-                    self.total_steps > self.batch_size
-                    and epoch % self.update_every == 0
-                ):
-                    actor_losses = []
-                    critic_losses = []
-                    start_up = perf_counter()
-                    
-                    if self.gradient_steps < 0:
-                        self.iter_fit = steps
-
-                    # sampling indices beforehand is faster, but limits prioritized replay until buffer has iter_fit*batch_size samples
-                    if not self.prioritized_replay:
-                        inds_all = self.replay_buffer.sample_inds(
-                            (self.iter_fit, self.batch_size)
-                        )
-                    else:
-                        inds_all = None
-
-                    for i in range(self.iter_fit):
-                        if inds_all is not None:
-                            inds = inds_all[i]
-                        else:
-                            inds = self.replay_buffer.sample_inds((self.batch_size))
-                        # inds = sample_inds[i]
-
-                        actor_loss, critic_loss = self.update_step(inds=inds)
-                        if actor_loss is not None:
-                            actor_losses.append(actor_loss)
-                        critic_losses.append(critic_loss)
-                    # print(f"Update step took: {perf_counter() - start_up}")
-                    upd_duration = perf_counter() - start_up
-                    upd_durations.append(upd_duration)
-
-                    actor_loss_mean = np.mean(actor_losses)
-                    critic_loss_mean = np.mean(critic_losses)
-
-                    actor_loss_first = actor_losses[0]
-                    critic_loss_first = critic_losses[0]
-
-                    actor_loss_last = actor_losses[-1]
-                    critic_loss_last = critic_losses[-1]
-
-                    ep_actor_losses_first.append(actor_loss_first)
-                    ep_actor_losses_last.append(actor_loss_last)
-
-                    ep_critic_losses_first.append(critic_loss_first)
-                    ep_critic_losses_last.append(critic_loss_last)
-
-                    ep_actor_losses.append(actor_loss_mean)
-                    ep_critic_losses.append(critic_loss_mean)
-
-                    # print(
-                    #     f"Epoch {epoch}: ep reward: {episode_rewards[-1]}, actor loss: {actor_loss_mean:.2f}, critic loss: {critic_loss_mean:.2f}, duration: {ep_duration:.2f}"
-                    # )
-
-        except KeyboardInterrupt:
-            return (
-                episode_rewards,
-                test_rewards,
-                episode_steps,
-                ep_durations,
-                upd_durations,
-                ep_actor_losses,
-                ep_critic_losses,
+        if self.total_steps % 1000 == 0:
+            self.logger.debug(
+                f"Action step {self.total_steps} | "
+                f"policy_mean={action.mean().item():.3f}, "
+                f"policy_min={action.min().item():.3f}, "
+                f"policy_max={action.max().item():.3f}"
             )
-        return (
-            episode_rewards,
-            test_rewards,
-            episode_steps,
-            ep_durations,
-            upd_durations,
-            ep_actor_losses,
-            ep_critic_losses,
-        )
 
-    def test(self, noise_enabled=False, render_mode=None):
-        # set render mode
-        env = None
-        if self.env_string == "LunarLander-v2":
-            env = gym.make(self.env_string, continuous=True, render_mode=render_mode)
-        elif self.env_string == "HockeyEnv-v0" or self.env_string == "Hockey-One-v0":
-            env = self.env
-        else:
-            env = gym.make(self.env_string, render_mode=render_mode)
+        action = self.scaler.scale_action(action)
+        return action.detach().cpu().numpy()
 
-        state, info = env.reset()
-        done = False
-        step = 0
-        rewards = []
-        while not done and step < self.steps_max:
-            action = self.get_action(state, noise=noise_enabled)
-            state, reward, done, _, _ = env.step(action)
-            rewards.append(reward)
-            step += 1
-            if render_mode == "human" and self.env_string == "HockeyEnv-v0" or self.env_string == "Hockey-One-v0":
-                env.render(mode="human")
 
-        if render_mode == "human" and not (self.env_string == "HockeyEnv-v0" or self.env_string == "Hockey-One-v0"):
-            # close window
-            env.close()
-        return np.sum(rewards)
 
     @staticmethod
     def update_target(net, target, rho=0.995):
@@ -556,3 +374,14 @@ class TD3:
             )
         # load target state dict
         target.load_state_dict(target_state_dict)
+
+
+    def save(self, path):
+        torch.save({
+            "policy": self.policy.state_dict(),
+            "q1": self.q1.state_dict(),
+            "q2": self.q2.state_dict(),
+            "target_policy": self.target_policy.state_dict(),
+            "target_q1": self.target_q1.state_dict(),
+            "target_q2": self.target_q2.state_dict(),
+        }, path)
