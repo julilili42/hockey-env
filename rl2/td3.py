@@ -9,6 +9,9 @@ from core.config import TD3Config
 from core.device import device
 from utils.torch_utils import to_torch, weighted_smooth_l1_loss
 from utils.logger import Logger
+from twin_critic import TwinCritic
+from copy import deepcopy
+
 
 class TD3:
     def __init__(
@@ -34,13 +37,37 @@ class TD3:
         n_obs = env.observation_space.shape[0]
         n_act = env.action_space.shape[0]
 
-        self.q1, self.q2, self.policy = self._build_networks(n_obs, n_act, h)
+        self.scaler = Scaler(self.env, debug=self.cfg.debug)
 
-        self._init_target_networks()
+
+
+        self.critic = TwinCritic(
+            n_obs,
+            n_act,
+            h,
+            action_low=self.scaler.action_low,
+            action_high=self.scaler.action_high,
+        ).to(self.device)
+        self.target_critic = deepcopy(self.critic).to(self.device)
+
+        self.policy = FeedforwardNetwork(n_obs, n_act, h=h).to(self.device)
+        self.target_policy = deepcopy(self.policy).to(self.device)
+
+        for net in (self.target_critic, self.target_policy):
+            for p in net.parameters():
+                p.requires_grad = False
+
+
         self._init_optimizers(config)
 
-        self.scaler = Scaler(self.env, debug=self.cfg.debug)
         self.noise_generator = self._init_noise()
+
+
+        self.logger.info(
+            f"Network sizes | "
+            f"policy_params={sum(p.numel() for p in self.policy.parameters())}, "
+            f"critic_params={sum(p.numel() for p in self.critic.parameters())}"
+        )
 
         self.logger.info(
             f"TD3 init | obs={n_obs}, act={n_act}, "
@@ -48,6 +75,8 @@ class TD3:
             f"policy_freq={self.policy_update_freq}, "
             f"prio_replay={self.prioritized_replay}"
         )
+
+
 
 
 
@@ -66,49 +95,15 @@ class TD3:
 
 
     def _init_optimizers(self, config):
-        self.q1_optimizer = torch.optim.Adam(
-            self.q1.parameters(), lr=config.lr_q,
-            eps=1e-6, weight_decay=config.wd_q
+        self.critic_optimizer = torch.optim.Adam(
+            self.critic.parameters(), lr=config.lr_q, eps=1e-6, weight_decay=config.wd_q
         )
-        self.q2_optimizer = torch.optim.Adam(
-            self.q2.parameters(), lr=config.lr_q,
-            eps=1e-6, weight_decay=config.wd_q
-        )
+
         self.pol_optimizer = torch.optim.Adam(
-            self.policy.parameters(), lr=config.lr_pol,
-            eps=1e-6, weight_decay=config.wd_pol
+            self.policy.parameters(), lr=config.lr_pol, eps=1e-6, weight_decay=config.wd_pol
         )
 
         self.q_loss = weighted_smooth_l1_loss
-
-
-    def _init_target_networks(self):
-        self.target_q1 = self.q1.copy().to(self.device)
-        self.target_q2 = self.q2.copy().to(self.device)
-        self.target_policy = self.policy.copy().to(self.device)
-
-        for net in (self.target_q1, self.target_q2, self.target_policy):
-            for p in net.parameters():
-                p.requires_grad = False
-
-
-    def _build_networks(self, n_obs, n_act, h):
-        q1 = FeedforwardNetwork(
-            n_obs + n_act, 1, act_out=nn.Identity(), h=h
-        ).to(self.device)
-
-        q2 = FeedforwardNetwork(
-            n_obs + n_act, 1, act_out=nn.Identity(), h=h
-        ).to(self.device)
-
-        policy = FeedforwardNetwork(
-            n_obs, n_act, h=h
-        ).to(self.device)
-
-        return q1, q2, policy
-
-
-
 
     def _init_hyperparams(self, config, zeta):
         self.gamma = config.gamma
@@ -136,53 +131,15 @@ class TD3:
             self.noise_generator.reset()
             self.logger.debug("OU noise reset")
 
-    def update_targets(self, rho=None):
-        if rho is None:
-            self.update_target(self.q1, self.target_q1, rho=self.rho_critic)
-            self.update_target(self.q2, self.target_q2, rho=self.rho_critic)
-            self.update_target(self.policy, self.target_policy, rho=self.rho_actor)
-        else:
-            self.update_target(self.q1, self.target_q1, rho=rho)
-            self.update_target(self.q2, self.target_q2, rho=rho)
-            self.update_target(self.policy, self.target_policy, rho=rho)
-    
-
-    def _critic(self, net, state, action):
-        #state = self.scaler.unscale_state(state)
-        action = self.scaler.unscale_action(action)
-        x = torch.hstack((state, action))
-
-        if torch.any(torch.isnan(state)) or torch.any(torch.isnan(action)):
-            self.logger.error(
-                f"NaN BEFORE critic | "
-                f"state_nan={torch.isnan(state).any().item()}, "
-                f"action_nan={torch.isnan(action).any().item()}"
-            )
-
-        return net(x).squeeze(-1)
-    
-
-    def get_q1(self, state, action):
-        return self._critic(self.q1, state, action)
-
-    def get_q2(self, state, action):
-        return self._critic(self.q2, state, action)
-
-    def get_q1_target(self, state, action):
-        return self._critic(self.target_q1, state, action)
-
-    def get_q2_target(self, state, action):
-        return self._critic(self.target_q2, state, action)
+    def update_targets(self):
+        self.update_target(self.critic, self.target_critic, rho=self.rho_critic)
+        self.update_target(self.policy, self.target_policy, rho=self.rho_actor)
 
 
     def get_policy_action(self, state):
         return self.policy(state)
-        #unscaled_state = self.scaler.unscale_state(state)
-        #return self.policy(unscaled_state)
 
     def get_target_policy_action(self, state):
-        #unscaled_state = self.scaler.unscale_state(state)
-        #target_action = self.target_policy(unscaled_state)
         target_action = self.target_policy(state)
         # add normal noise
         noise = to_torch(
@@ -204,66 +161,85 @@ class TD3:
                 f"noisy_min={noisy_action.min().item():.3f}, "
                 f"noisy_max={noisy_action.max().item():.3f}"
             )
+
+        clipped = torch.clamp(
+                    noisy_action,
+                    self.scaler.action_low,
+                    self.scaler.action_high,
+                )
+
+
+        if self.train_iter % 200 == 0:
+            self.logger.debug(
+                f"Clip | "
+                f"clipped_min={clipped.min().item():.3f}, "
+                f"clipped_max={clipped.max().item():.3f}"
+            )
             
-        return torch.clamp(
-            target_action + clamped_noise,
-            self.scaler.action_low,
-            self.scaler.action_high,
-        )
+        return clipped
+
+
+
+
 
     def update_q(self, state, action, reward, next_state, done):
-        
-        self.q1_optimizer.zero_grad(set_to_none=True)
-        self.q2_optimizer.zero_grad(set_to_none=True)
+        self.critic_optimizer.zero_grad(set_to_none=True)
 
         act_target = self.get_target_policy_action(next_state)
 
         with torch.no_grad():
-            q1_target_next = self.get_q1_target(next_state, act_target)
-            q2_target_next = self.get_q2_target(next_state, act_target)
+            q1_target_next, q2_target_next = self.target_critic(next_state, act_target)
 
         q_target_next = torch.minimum(q1_target_next, q2_target_next)
 
-        target = torch.squeeze(
-            reward + self.gamma * (1 - done) * q_target_next
-        ).detach()
+        target = reward + self.gamma * (1 - done) * q_target_next
+        target = target.detach()
 
-        pred1 = self.get_q1(state, action)
-        pred2 = self.get_q2(state, action)
+        pred1, pred2 = self.critic(state, action)
+
+        if self.train_iter % 200 == 0:
+            self.logger.debug(
+                f"Critic input | "
+                f"state_min={state.min().item():.3f}, "
+                f"state_max={state.max().item():.3f}, "
+                f"action_min={action.min().item():.3f}, "
+                f"action_max={action.max().item():.3f}"
+            )
 
         if self.prioritized_replay:
             probs = self.replay_buffer.get_last_probs()
             weights = (1 / (probs * self.replay_buffer.size)) ** self.beta
-            weights = to_torch(weights / np.max(weights))
+            weights = weights / np.max(weights)
+            weights = to_torch(weights)
         else:
             weights = None
 
         loss1 = self.q_loss(pred1, target, weights=weights)
         loss2 = self.q_loss(pred2, target, weights=weights)
 
-        if not torch.isfinite(loss1) or not torch.isfinite(loss2):
+        loss = loss1 + loss2
+
+        if not torch.isfinite(loss):
             self.logger.error("Non-finite critic loss detected!")
 
+        loss.backward()
 
-        loss1.backward(inputs=list(self.q1.parameters()))
-        loss2.backward(inputs=list(self.q2.parameters()))
+        total_norm = 0
+        for p in self.critic.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
 
-        self.q1_optimizer.step()
-        self.q2_optimizer.step()
+        if total_norm > 1000:
+            self.logger.warning(f"Large critic gradient norm: {total_norm}")
+
+        self.critic_optimizer.step()
 
         if self.prioritized_replay:
             td_error = (torch.abs(pred1 - target) + torch.abs(pred2 - target)) / 2
             priorities = torch.clamp(td_error, 1e-6, 1e6).detach().cpu().numpy()
-
-            if not torch.isfinite(td_error).all():
-                self.logger.error(
-                    f"Non-finite TD error | "
-                    f"td_min={td_error.min().item()}, "
-                    f"td_max={td_error.max().item()}"
-                )
-
             self.replay_buffer.update_priorities(priorities)
-
 
         if self.train_iter % 200 == 0:
             self.logger.debug(
@@ -273,8 +249,8 @@ class TD3:
                 f"pred2_mean={pred2.mean().item():.3f}"
             )
 
+        return loss.item() / 2
 
-        return (loss1.item() + loss2.item()) / 2
 
 
     def update_policy(self, state):
@@ -282,11 +258,11 @@ class TD3:
         # compute loss
         pol_action = self.get_policy_action(state)
 
-        q_pol = self.get_q1(state, pol_action)
+        q_pol, _ = self.critic(state, pol_action)
 
         loss = -q_pol.mean()
         # backpropagate
-        loss.backward(inputs=list(self.policy.parameters()), retain_graph=False)
+        loss.backward()
         self.pol_optimizer.step()
 
         if self.train_iter % 200 == 0:
@@ -379,9 +355,7 @@ class TD3:
     def save(self, path):
         torch.save({
             "policy": self.policy.state_dict(),
-            "q1": self.q1.state_dict(),
-            "q2": self.q2.state_dict(),
+            "critic": self.critic.state_dict(),
             "target_policy": self.target_policy.state_dict(),
-            "target_q1": self.target_q1.state_dict(),
-            "target_q2": self.target_q2.state_dict(),
+            "target_critic": self.target_critic.state_dict(),
         }, path)

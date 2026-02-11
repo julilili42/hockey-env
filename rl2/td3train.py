@@ -123,7 +123,7 @@ class TD3Trainer:
         if ep % self.eval_interval != 0:
             return
 
-        wr = self.evaluate(episodes=20)
+        wr = self.evaluate(episodes=100)
         avg_reward_100 = np.mean(self.rewards[-100:])
 
         info = (

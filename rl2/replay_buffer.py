@@ -2,10 +2,11 @@ import torch
 import numpy as np
 from utils.logger import Logger
 
-logger = Logger.get_logger()
 
 class ReplayBufferPrioritized:
     def __init__(self, buffer_size, prioritized_replay=True):
+        self.logger = Logger.get_logger()
+
         self.buffer_size = buffer_size
         self.init_weight = 1e8
         self.current_index = 0
@@ -17,7 +18,7 @@ class ReplayBufferPrioritized:
         if self.prioritized_replay:
             self.weights = np.full(buffer_size, self.init_weight, dtype=np.float32)
 
-        logger.info(
+        self.logger.info(
             f"ReplayBuffer init | size={buffer_size}, "
             f"prioritized={self.prioritized_replay}"
         )
@@ -26,10 +27,10 @@ class ReplayBufferPrioritized:
 
     def push(self, state, action, reward, next_state, done):
         if np.any(np.isnan(state)) or np.any(np.isinf(state)):
-            logger.error("NaN/Inf state pushed to buffer")
+            self.logger.error("NaN/Inf state pushed to buffer")
 
         if np.any(np.isnan(next_state)) or np.any(np.isinf(next_state)):
-            logger.error("NaN/Inf next_state pushed to buffer")
+            self.logger.error("NaN/Inf next_state pushed to buffer")
 
         elem_dict = {
             "state": state,
@@ -45,18 +46,18 @@ class ReplayBufferPrioritized:
         self.current_index = (self.current_index + 1) % self.buffer_size
 
         if self.size % 5000 == 0:
-            logger.debug(
+            self.logger.debug(
                 f"ReplayBuffer push | size={self.size}, "
                 f"idx={self.current_index}"
             )
         if np.isnan(reward):
-            logger.error("NaN reward pushed to replay buffer")
+            self.logger.error("NaN reward pushed to replay buffer")
 
 
     def sample(self, inds=None, batch_size=1):
 
         if self.size < batch_size:
-            logger.warning(
+            self.logger.warning(
                 f"Sampling with underfilled buffer: "
                 f"size={self.size}, batch={batch_size}"
             )
@@ -80,23 +81,23 @@ class ReplayBufferPrioritized:
         done = torch.tensor(np.array([elem["done"] for elem in batch], dtype=np.float32))
 
         if torch.isnan(state).any():
-            logger.error("NaN detected in sampled states")
+            self.logger.error("NaN detected in sampled states")
 
         if torch.isnan(action).any():
-            logger.error("NaN detected in sampled actions")
+            self.logger.error("NaN detected in sampled actions")
 
 
         return state, action, reward, next_state, done
 
     def __len__(self):
-        return len(self.buffer)
+        return self.size
 
     def get_last_probs(self):
         if self.prioritized_replay:
             probs = self.weights[self.last_batch_inds]
 
             if np.any(np.isnan(probs)) or np.any(probs <= 0):
-                logger.error(
+                self.logger.error(
                     "Invalid sampling probabilities in replay buffer"
                 )
             return probs / probs.sum()
@@ -106,7 +107,7 @@ class ReplayBufferPrioritized:
     def update_priorities(self, priorities):
         if self.prioritized_replay:
             if np.any(np.isnan(priorities)) or np.any(priorities <= 0):
-                logger.error(
+                self.logger.error(
                     f"Invalid priorities: "
                     f"min={priorities.min()}, max={priorities.max()}"
                 )
