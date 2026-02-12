@@ -6,9 +6,9 @@ class TD3Config:
   tau_actor = 0.005
   tau_critic = 0.005
   policy_update_freq = 2
-
-  lr_q = 1e-3
-  lr_pol = 1e-3
+  
+  lr_q = 5e-4
+  lr_pol = 5e-4
   wd_q = 1e-4
   wd_pol = 1e-4
 

@@ -160,6 +160,13 @@ class TD3Agent:
             action = self._add_noise(action)
 
         action = self.scaler.scale_action(action)
+
+        if noise and not eval_mode and self.total_steps % 2000 == 0:
+            self.logger.info(
+                f"Exploration | "
+                f"noise_scale={self.cfg.action_noise_scale}"
+            )
+
         return action.detach().cpu().numpy()
     
 
@@ -179,3 +186,14 @@ class TD3Agent:
             "target_policy": self.target_policy.state_dict(),
             "target_critic": self.target_critic.state_dict(),
         }, path)
+
+
+    def load(self, path):
+        checkpoint = torch.load(path, map_location=self.device)
+
+        self.policy.load_state_dict(checkpoint["policy"])
+        self.critic.load_state_dict(checkpoint["critic"])
+        self.target_policy.load_state_dict(checkpoint["target_policy"])
+        self.target_critic.load_state_dict(checkpoint["target_critic"])
+
+        self.logger.info(f"Checkpoint loaded from {path}")

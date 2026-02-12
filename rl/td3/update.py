@@ -51,6 +51,12 @@ class TD3Update:
 
     def update(self, state, action, reward, next_state, done):
         self.train_step += 1
+
+        if self.train_step % 2000 == 0:
+            self.logger.info(
+                f"Replay size={len(self.replay_buffer)}"
+            )
+            
         target = self.compute_target(next_state, reward, done)
 
         critic_loss = self.update_critic(state, action, target)
@@ -92,6 +98,15 @@ class TD3Update:
 
             q_target = torch.minimum(q1_target, q2_target)
 
+            if self.train_step % 2000 == 0:
+                self.logger.info(
+                    f"Target Q stats | "
+                    f"mean={q_target.mean().item():.3f} | "
+                    f"std={q_target.std().item():.3f} | "
+                    f"max={q_target.max().item():.3f}"
+                )
+
+
             return reward + self.gamma * (1 - done.float()) * q_target
 
 
@@ -99,6 +114,20 @@ class TD3Update:
         self.critic_optimizer.zero_grad(set_to_none=True)
 
         q1, q2 = self.critic(state, action)
+
+        if self.train_step % 1000 == 0:
+            self.logger.info(
+                f"Q stats | "
+                f"q1_mean={q1.mean().item():.3f} | "
+                f"q1_max={q1.max().item():.3f} | "
+                f"target_mean={target.mean().item():.3f} | "
+                f"target_max={target.max().item():.3f}"
+            )
+
+        
+
+
+
 
         weights = self._compute_importance_weights() if self.prioritized else None
 
@@ -111,6 +140,13 @@ class TD3Update:
 
         if self.prioritized:
             td_error = (torch.abs(q1 - target) + torch.abs(q2 - target)) / 2
+            if self.train_step % 1000 == 0:
+                self.logger.info(
+                    f"TD error | "
+                    f"mean={td_error.mean().item():.3f} | "
+                    f"std={td_error.std().item():.3f} | "
+                    f"max={td_error.max().item():.3f}"
+                )
             priorities = torch.clamp(td_error, 1e-6, 1e6).detach().cpu().numpy()
             self.replay_buffer.update_priorities(priorities)
 
@@ -125,7 +161,37 @@ class TD3Update:
 
         actor_loss = -q_val.mean()
         actor_loss.backward()
+
+        if self.train_step % 1000 == 0:
+            total_norm = 0.0
+            for p in self.actor.parameters():
+                if p.grad is not None:
+                    total_norm += p.grad.data.norm(2).item() ** 2
+            total_norm = total_norm ** 0.5
+
+            self.logger.info(
+                f"Actor grad norm={total_norm:.4f}"
+            )
+
         self.actor_optimizer.step()
+
+        if self.train_step % 1000 == 0:
+            saturation = (torch.abs(action) > 0.95).float().mean().item()
+            self.logger.info(
+                f"Actor action stats | "
+                f"mean={action.mean().item():.3f} | "
+                f"std={action.std().item():.3f} | "
+                f"max={action.max().item():.3f}"
+                f"saturation={saturation:.3f}"
+            )
+
+        if self.train_step % 2000 == 0:
+            self.logger.info(
+                f"Actor Q feedback | "
+                f"mean_Q={q_val.mean().item():.3f} | "
+                f"min_Q={q_val.min().item():.3f}"
+            )
+
 
         return actor_loss.item()
     

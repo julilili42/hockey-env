@@ -9,18 +9,22 @@ class Logger:
         if Logger._logger is not None:
             return Logger._logger
 
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-
         logger = logging.getLogger("RL")
         logger.setLevel(logging.DEBUG)
-        logger.handlers.clear()   
+        logger.handlers.clear()
 
-        fh = logging.FileHandler(log_path, mode="w")
         formatter = logging.Formatter(
             "%(asctime)s | %(levelname)s | %(filename)s:%(lineno)d | %(message)s"
         )
-        fh.setFormatter(formatter)
-        logger.addHandler(fh)
+
+        if log_path is not None:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            handler = logging.FileHandler(log_path, mode="w")
+        else:
+            handler = logging.StreamHandler()
+
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
         Logger._logger = logger
         return logger

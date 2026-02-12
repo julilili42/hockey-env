@@ -13,7 +13,7 @@ class Evaluator:
         
         with torch.no_grad():
           for i in range(self.episodes):
-              obs, _ = self.env.reset()
+              obs, _ = self.env.reset(seed=i)
               done = False
 
               while not done:

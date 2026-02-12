@@ -25,9 +25,12 @@ def setup_run_dirs(run_name):
     return log_dir, model_dir, metrics_dir, plot_dir
 
 
-def train_td3(train_env, eval_env, config, model_dir, metrics_dir, plot_dir, episodes, hidden_size):
+def train_td3(train_env, eval_env, config, model_dir, metrics_dir, plot_dir, episodes, hidden_size, resume_from=None,):
     agent = TD3Agent(env=train_env, config=config, h=hidden_size)
 
+    if resume_from is not None:
+        agent.load(resume_from)
+        
     trainer = TD3Trainer(
         agent=agent,
         train_env=train_env,
@@ -43,7 +46,7 @@ def train_td3(train_env, eval_env, config, model_dir, metrics_dir, plot_dir, epi
     return trainer
 
 
-def run_experiment(weak_opponent, episodes, hidden_size=256):
+def run_experiment(weak_opponent, episodes, hidden_size=256, resume_from=None):
     run_name = "weak" if weak_opponent else "strong"
     log_dir, model_dir, metrics_dir, plot_dir = setup_run_dirs(run_name)
 
@@ -64,6 +67,7 @@ def run_experiment(weak_opponent, episodes, hidden_size=256):
         plot_dir,
         episodes,
         hidden_size,
+        resume_from=resume_from,
     )
 
     save_metrics(trainer.metrics, metrics_dir)
@@ -71,9 +75,15 @@ def run_experiment(weak_opponent, episodes, hidden_size=256):
     plotter = MetricsPlotter(trainer.metrics)
     plotter.save_all(plot_dir)
 
+def get_pretrained_path(name):
+    base = os.path.dirname(__file__)
+    return os.path.join(base, "pretrained", name)
+
 
 if __name__ == "__main__":
     run_experiment(
-        weak_opponent=True,
+        weak_opponent=False,
         episodes=1_000,
+        hidden_size = 256,
+        resume_from=get_pretrained_path("weak/td3_weak_best.pt")
     )
