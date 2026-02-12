@@ -5,7 +5,7 @@ class Logger:
     _logger = None
 
     @staticmethod
-    def get_logger(log_path="logs/run.log"):
+    def get_logger(log_path=None):
         if Logger._logger is not None:
             return Logger._logger
 

@@ -1,59 +1,79 @@
-import torch
-import numpy as np
 import gymnasium as gym
-import optparse
-from train import Train
-import hockey.hockey_env 
+import hockey.hockey_env
+import numpy as np
+import os
 
-def main():
-    optParser = optparse.OptionParser()
-    optParser.add_option('-e', '--env',action='store', type='string',
-                         dest='env_name',default="Hockey-One-v0",
-                         help='Environment (default %default)')
-    optParser.add_option('-t', '--train',action='store',  type='int',
-                         dest='train',default=32,
-                         help='number of training batches per episode (default %default)')
-    optParser.add_option('-l', '--lr',action='store',  type='float',
-                         dest='lr',default=0.0001,
-                         help='learning rate for actor/policy (default %default)')
-    optParser.add_option('-m', '--maxepisodes',action='store',  type='float',
-                         dest='max_episodes',default=2000,
-                         help='number of episodes (default %default)')
-    optParser.add_option('-s', '--seed',action='store',  type='int',
-                         dest='seed',default=None,
-                         help='random seed (default %default)')
-    optParser.add_option('-c', '--checkpoint', action='store', type='string',
-                         dest='checkpoint', default=None, 
-                         help='Path to checkpoint (.pth). If set: skip training and render only.')
-    opts, _ = optParser.parse_args()
+from rl.td3.agent import TD3Agent
+from rl.training.train import TD3Trainer
+from rl.td3.config import TD3Config
+from rl.utils.logger import Logger
+from rl.utils.plotter import MetricsPlotter
+from rl.utils.metrics import save_metrics
 
-    
-    random_seed = opts.seed
-    checkpoint = opts.checkpoint
+def setup_run_dirs(run_name):
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    exp_dir = os.path.join(base_dir, "experiments", run_name)
 
-    # create environment
-    env_name = opts.env_name
-    env = gym.make(env_name)
+    log_dir = os.path.join(exp_dir, "logs")
+    model_dir = os.path.join(exp_dir, "models")
+    metrics_dir = os.path.join(exp_dir, "metrics")
+    plot_dir = os.path.join(exp_dir, "plots")
 
-    
-    if random_seed is not None:
-        torch.manual_seed(random_seed)
-        np.random.seed(random_seed)
-    
+    for d in (log_dir, model_dir, metrics_dir, plot_dir):
+        os.makedirs(d, exist_ok=True)
+
+    return log_dir, model_dir, metrics_dir, plot_dir
 
 
-    trainer = Train(opts, env)
+def train_td3(train_env, eval_env, config, model_dir, metrics_dir, plot_dir, episodes, hidden_size):
+    agent = TD3Agent(env=train_env, config=config, h=hidden_size)
 
-    if checkpoint is not None:
-        print(f"Loading checkpoint: {opts.checkpoint}")
-        trainer.load_checkpoint(opts.checkpoint)
-        trainer.render_env()
-    else:
-        trainer.train_loop()
-        trainer.save_statistics()
-        trainer.plot_rewards()
-        trainer.plot_winrate()
-        trainer.render_env()
+    trainer = TD3Trainer(
+        agent=agent,
+        train_env=train_env,
+        eval_env=eval_env,
+        model_dir=model_dir,
+        metrics_dir=metrics_dir,
+        plot_dir=plot_dir,
+        max_episodes=episodes,
+    )
 
-if __name__ == '__main__':
-    main()
+
+    trainer.train()
+    return trainer
+
+
+def run_experiment(weak_opponent, episodes, hidden_size=256):
+    run_name = "weak" if weak_opponent else "strong"
+    log_dir, model_dir, metrics_dir, plot_dir = setup_run_dirs(run_name)
+
+    logger = Logger.get_logger(os.path.join(log_dir, "run.log"))
+    logger.info(f"=== NEW RUN STARTED | opponent={run_name} ===")
+
+    train_env = gym.make("Hockey-One-v0", weak_opponent=weak_opponent)
+    eval_env = gym.make("Hockey-One-v0", weak_opponent=weak_opponent)
+
+    config = TD3Config()
+
+    trainer = train_td3(
+        train_env,
+        eval_env,
+        config,
+        model_dir,
+        metrics_dir,
+        plot_dir,
+        episodes,
+        hidden_size,
+    )
+
+    save_metrics(trainer.metrics, metrics_dir)
+
+    plotter = MetricsPlotter(trainer.metrics)
+    plotter.save_all(plot_dir)
+
+
+if __name__ == "__main__":
+    run_experiment(
+        weak_opponent=True,
+        episodes=1_000,
+    )

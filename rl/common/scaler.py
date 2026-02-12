@@ -1,7 +1,7 @@
 import torch
 import numpy as np
-from core.device import device
-from utils.logger import Logger
+from rl.utils.logger import Logger
+from rl.common.device import device
 
 
 class Scaler:

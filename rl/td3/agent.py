@@ -1,16 +1,16 @@
 import torch
 import numpy as np
-from replay_buffer import ReplayBufferPrioritized as ReplayBuffer
-from noise import OUActionNoise
-from scaler import Scaler
-from feedforward import FeedforwardNetwork
-from core.config import TD3Config
-from core.device import device
-from utils.torch_utils import to_torch, weighted_smooth_l1_loss
-from utils.logger import Logger
-from twin_critic import TwinCritic
 from copy import deepcopy
-from td3_update import TD3Update
+from rl.common.replay_buffer import ReplayBufferPrioritized as ReplayBuffer
+from rl.common.noise import OUActionNoise
+from rl.common.scaler import Scaler
+from rl.td3.networks import ActorNetwork
+from rl.td3.config import TD3Config
+from rl.common.device import device
+from rl.td3.networks import TwinQNetwork
+from rl.td3.update import TD3Update
+from rl.utils.torch_utils import to_torch
+from rl.utils.logger import Logger
 
 
 class TD3Agent:
@@ -42,7 +42,6 @@ class TD3Agent:
 
         self.noise_generator = self._init_noise()
 
-
         self.learner = TD3Update(
             actor=self.policy,
             critic=self.critic,
@@ -73,7 +72,7 @@ class TD3Agent:
 
 
     def _build_networks(self, n_obs, n_act, h):
-        critic = TwinCritic(
+        critic = TwinQNetwork(
             n_obs,
             n_act,
             h,
@@ -83,7 +82,7 @@ class TD3Agent:
 
         target_critic = deepcopy(critic).to(self.device)
 
-        policy = FeedforwardNetwork(n_obs, n_act, h=h).to(self.device)
+        policy = ActorNetwork(n_obs, n_act, h=h).to(self.device)
         target_policy = deepcopy(policy).to(self.device)
 
         for net in (target_critic, target_policy):
@@ -116,7 +115,6 @@ class TD3Agent:
             self.policy.parameters(), lr=self.cfg.lr_pol, eps=1e-6, weight_decay=self.cfg.wd_pol
         )
 
-        self.q_loss = weighted_smooth_l1_loss
 
 
     def reset(self):
@@ -129,9 +127,11 @@ class TD3Agent:
         return self.policy(state)
 
     def update_step(self, inds=None):
-        state, action, reward, next_state, done = self.replay_buffer.sample(
-            inds=inds, batch_size=self.cfg.batch_size
-        )
+        state, action, reward, next_state, done = \
+            self.replay_buffer.sample(
+                inds=inds,
+                batch_size=self.cfg.batch_size
+            )
 
         state = to_torch(state, device=self.device)
         action = to_torch(action, device=self.device)
@@ -139,11 +139,10 @@ class TD3Agent:
         next_state = to_torch(next_state, device=self.device)
         done = to_torch(done, device=self.device)
 
-        actor_loss, critic_loss = self.learner.update(
+        return self.learner.update(
             state, action, reward, next_state, done
         )
 
-        return actor_loss, critic_loss
 
 
     def get_action(self, state, noise=True, eval_mode=False):
@@ -154,7 +153,8 @@ class TD3Agent:
             return self.env.action_space.sample()
 
         state = to_torch(state, device=self.device)
-        action = self.policy(state)
+        with torch.no_grad():
+            action = self.policy(state)
 
         if noise and not eval_mode:
             action = self._add_noise(action)

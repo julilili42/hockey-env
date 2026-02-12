@@ -23,4 +23,8 @@ class TD3Config:
   noise_mode = "ornstein-uhlenbeck"
 
   debug = True
-  debug_every = 1_000
+
+  early_stopping = True
+  early_patience = 5
+  early_min_delta = 0.01
+

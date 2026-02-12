@@ -1,27 +1,51 @@
 import numpy as np
 import os
-from utils.logger import Logger
-from utils.metrics import MetricsTracker
-from utils.model_manager import ModelManager
-from utils.evaluator import Evaluator
-
+from rl.utils.logger import Logger
+from rl.utils.metrics import MetricsTracker
+from rl.utils.model_manager import ModelManager
+from rl.utils.evaluator import Evaluator
+from rl.utils.metrics import save_metrics
+from rl.utils.plotter import MetricsPlotter
+from rl.utils.early_stopping import EarlyStopping
 
 
 class TD3Trainer:
     def __init__(
-        self,
-        agent,
-        train_env,
-        eval_env,
-        model_dir,
-        max_episodes=2000,
-        max_steps=500,
-        train_iters=32,
-        eval_interval=200,
-    ):
+    self,
+    agent,
+    train_env,
+    eval_env,
+    model_dir,
+    metrics_dir,
+    plot_dir,
+    max_episodes=2000,
+    max_steps=500,
+    train_iters=32,
+    eval_interval=200,
+):
+        self.agent = agent
+        self.train_env = train_env
+        self.max_episodes = max_episodes
+        self.max_steps = max_steps
+        self.train_iters = train_iters
+        self.eval_interval = eval_interval
+
+
         self.logger = Logger.get_logger()
         self.metrics = MetricsTracker()
         self.evaluator = Evaluator(eval_env, episodes=100)
+        self.model_manager = ModelManager(model_dir)
+
+        self.early_stopper = EarlyStopping(
+            patience=self.agent.cfg.early_patience,
+            min_delta=self.agent.cfg.early_min_delta,
+            mode="max",
+        ) if self.agent.cfg.early_stopping else None
+
+
+        self.model_dir = model_dir
+        self.metrics_dir = metrics_dir
+        self.plot_dir = plot_dir
 
 
         self.logger.info(
@@ -31,28 +55,38 @@ class TD3Trainer:
             f"eval_interval={eval_interval}"
         )
 
-        self.agent = agent
-        self.train_env = train_env
-        self.max_episodes = max_episodes
-        self.max_steps = max_steps
-        self.train_iters = train_iters
-        self.eval_interval = eval_interval
-        self.model_manager = ModelManager(model_dir)
 
 
 
     def train(self):
-        for ep in range(1, self.max_episodes + 1):
-            self._log_episode_start(ep)
+        try:
+            for ep in range(1, self.max_episodes + 1):
+                self._log_episode_start(ep)
 
-            ep_reward, steps = self._run_episode()
+                ep_reward, steps = self._run_episode()
 
-            self.metrics.log_episode(ep_reward)
-            self._log_episode_end(ep, ep_reward, steps)
+                self.metrics.log_episode(ep_reward)
+                self._log_episode_end(ep, ep_reward, steps)
 
-            actor_loss, critic_loss = self._train_agent(ep)
+                actor_loss, critic_loss = self._train_agent(ep)
 
-            self._maybe_evaluate(ep, actor_loss, critic_loss)
+                self._maybe_evaluate(ep, actor_loss, critic_loss)
+
+        except KeyboardInterrupt:
+            self.logger.warning("Training interrupted manually.")
+            print("Training interrupted.")
+
+        except StopIteration:
+            self.logger.info("Training stopped by early stopping.")
+            print("Training stopped by early stopping.")
+
+        except Exception as e:
+            self.logger.exception(f"Training crashed: {e}")
+            print(f"Training crashed: {e}")
+
+        finally:
+            self._save_checkpoint()
+
 
 
     def _run_episode(self):
@@ -144,11 +178,26 @@ class TD3Trainer:
 
         self.metrics.log_eval(wr)
 
+        if self.early_stopper is not None:
+            if self.early_stopper.step(wr):
+                self.logger.info(
+                    f"Early stopping triggered | "
+                    f"best_winrate={self.early_stopper.best_score:.3f}"
+                )
+                print("Early stopping triggered.")
+                raise StopIteration
+
+
         self.model_manager.update(
             agent=self.agent,
             score=wr,
             episode=ep,
         )
+
+        save_metrics(self.metrics, self.metrics_dir)
+        plotter = MetricsPlotter(self.metrics)
+        plotter.save_all(self.plot_dir)
+
 
 
     def _log_episode_start(self, ep):
@@ -163,3 +212,18 @@ class TD3Trainer:
             self.logger.debug(
                 f"Episode {ep} finished | steps={steps}, reward={reward:.2f}"
             )
+
+    
+
+    def _save_checkpoint(self):
+        self.logger.info("Saving checkpoint (model + metrics + plots)...")
+
+        save_path = os.path.join(self.model_dir, "td3_last.pt")
+        self.agent.save(save_path)
+
+        from rl.utils.metrics import save_metrics
+        save_metrics(self.metrics, self.metrics_dir)
+
+        from rl.utils.plotter import MetricsPlotter
+        plotter = MetricsPlotter(self.metrics)
+        plotter.save_all(self.plot_dir)

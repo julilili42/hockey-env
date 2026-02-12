@@ -1,5 +1,5 @@
 import os
-from utils.logger import Logger
+from rl.utils.logger import Logger
 
 
 class ModelManager:

@@ -2,8 +2,8 @@ import torch
 import gymnasium as gym
 import hockey.hockey_env
 
-from td3_agent import TD3Agent
-from core.config import TD3Config
+from rl.td3.agent import TD3Agent
+from rl.td3.config import TD3Config
 
 MODEL_PATH = "/Users/julian/Desktop/models/weak/td3_best.pt"   
 

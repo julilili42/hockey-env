@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from utils.logger import Logger
+from rl.utils.logger import Logger
 
 
 class ReplayBufferPrioritized:

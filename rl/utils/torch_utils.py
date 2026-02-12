@@ -1,4 +1,4 @@
-from core.device import device
+from rl.common.device import device
 import torch
 
 
