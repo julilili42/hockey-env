@@ -93,16 +93,33 @@ class ReplayBufferPrioritized:
         return self.size
 
     def get_last_probs(self):
-        if self.prioritized_replay:
-            probs = self.weights[self.last_batch_inds]
-
-            if np.any(np.isnan(probs)) or np.any(probs <= 0):
-                self.logger.error(
-                    "Invalid sampling probabilities in replay buffer"
-                )
-            return probs / probs.sum()
-        else:
+        if not self.prioritized_replay:
             return None
+
+        probs = self.weights[self.last_batch_inds]
+
+        if np.any(np.isnan(probs)) or np.any(np.isinf(probs)) or np.any(probs <= 0):
+            self.logger.error(
+                f"Invalid PER probs | "
+                f"min={np.nanmin(probs):.3e}, "
+                f"max={np.nanmax(probs):.3e}, "
+                f"sum={np.nansum(probs):.3e}, "
+                f"buffer_size={self.size}, "
+                f"indices_sampled={self.last_batch_inds}"
+            )
+
+        total = probs.sum()
+
+        if total <= 0 or np.isnan(total) or np.isinf(total):
+            self.logger.error(
+                f"PER normalization failed | sum={total}, "
+                f"min={probs.min()}, max={probs.max()}"
+            )
+            # fallback: uniform
+            return np.ones_like(probs) / len(probs)
+
+        return probs / total
+
 
     def update_priorities(self, priorities):
         if self.prioritized_replay:

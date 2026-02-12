@@ -1,6 +1,10 @@
 import numpy as np
 import os
 from utils.logger import Logger
+from utils.metrics import MetricsTracker
+from utils.model_manager import ModelManager
+from utils.evaluator import Evaluator
+
 
 
 class TD3Trainer:
@@ -16,6 +20,9 @@ class TD3Trainer:
         eval_interval=200,
     ):
         self.logger = Logger.get_logger()
+        self.metrics = MetricsTracker()
+        self.evaluator = Evaluator(eval_env, episodes=100)
+
 
         self.logger.info(
             f"Trainer init | episodes={max_episodes}, "
@@ -26,17 +33,12 @@ class TD3Trainer:
 
         self.agent = agent
         self.train_env = train_env
-        self.eval_env = eval_env
         self.max_episodes = max_episodes
         self.max_steps = max_steps
         self.train_iters = train_iters
         self.eval_interval = eval_interval
-        self.best_winrate = -np.inf
-        self.model_dir = model_dir
-        os.makedirs(self.model_dir, exist_ok=True)
+        self.model_manager = ModelManager(model_dir)
 
-        self.rewards = []
-        self.winrate = []
 
 
     def train(self):
@@ -45,7 +47,7 @@ class TD3Trainer:
 
             ep_reward, steps = self._run_episode()
 
-            self.rewards.append(ep_reward)
+            self.metrics.log_episode(ep_reward)
             self._log_episode_end(ep, ep_reward, steps)
 
             actor_loss, critic_loss = self._train_agent(ep)
@@ -89,11 +91,11 @@ class TD3Trainer:
 
 
     def _train_agent(self, ep):
-        if self.agent.total_steps <= self.agent.batch_size:
+        if self.agent.total_steps <= self.agent.cfg.batch_size:
             self.logger.debug(
                 f"Skipping training | "
                 f"steps={self.agent.total_steps}, "
-                f"batch={self.agent.batch_size}"
+                f"batch={self.agent.cfg.batch_size}"
             )
             return None, None
 
@@ -116,6 +118,8 @@ class TD3Trainer:
                 f"actor_loss={actor_loss}"
             )
 
+        self.metrics.log_update(actor_loss, critic_loss)
+
         return actor_loss, critic_loss
 
 
@@ -123,8 +127,9 @@ class TD3Trainer:
         if ep % self.eval_interval != 0:
             return
 
-        wr = self.evaluate(episodes=100)
-        avg_reward_100 = np.mean(self.rewards[-100:])
+        wr = self.evaluator.evaluate(self.agent)
+
+        avg_reward_100 = self.metrics.avg_reward(100)
 
         info = (
             f"Eval ep {ep} | "
@@ -137,16 +142,14 @@ class TD3Trainer:
         self.logger.info(info)
         print(info)
 
-        self.winrate.append((ep, wr))
+        self.metrics.log_eval(wr)
 
-        if wr > self.best_winrate + 0.01:
-            self.best_winrate = wr
-            model_path = os.path.join(self.model_dir, "td3_best.pt")
-            self.agent.save(model_path)
+        self.model_manager.update(
+            agent=self.agent,
+            score=wr,
+            episode=ep,
+        )
 
-            self.logger.info(
-                f"New best model saved | ep={ep}, winrate={wr:.3f}"
-            )
 
     def _log_episode_start(self, ep):
         if ep % 100 == 0:
@@ -160,31 +163,3 @@ class TD3Trainer:
             self.logger.debug(
                 f"Episode {ep} finished | steps={steps}, reward={reward:.2f}"
             )
-
-
-    def evaluate(self, episodes=50):
-        wins = []
-
-        for i in range(episodes):
-            obs, _ = self.eval_env.reset(seed=i)
-            done = False
-
-            while not done:
-                action = self.agent.get_action(
-                    obs, noise=False, eval_mode=True
-                )
-                obs, _, done, trunc, info = self.eval_env.step(action)
-                done = done or trunc
-
-            wins.append(1 if info.get("winner", 0) == 1 else 0)
-
-        winrate = np.mean(wins)
-
-        if np.isnan(winrate):
-            self.logger.error("NaN winrate detected during evaluation")
-
-        self.logger.debug(
-            f"Evaluation done | episodes={episodes}, wins={sum(wins)}"
-        )
-
-        return winrate

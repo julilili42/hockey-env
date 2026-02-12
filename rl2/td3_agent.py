@@ -1,0 +1,181 @@
+import torch
+import numpy as np
+from replay_buffer import ReplayBufferPrioritized as ReplayBuffer
+from noise import OUActionNoise
+from scaler import Scaler
+from feedforward import FeedforwardNetwork
+from core.config import TD3Config
+from core.device import device
+from utils.torch_utils import to_torch, weighted_smooth_l1_loss
+from utils.logger import Logger
+from twin_critic import TwinCritic
+from copy import deepcopy
+from td3_update import TD3Update
+
+
+class TD3Agent:
+    def __init__(
+        self,
+        env,
+        config: TD3Config,
+        zeta=0.97, # for setting beta
+        h=64,
+    ):
+        self.logger = Logger.get_logger()
+        
+        self.env = env
+        self.cfg = config
+        self.device = device
+        self.total_steps = 0
+
+        self.beta = 1.0 - zeta / 2.0
+        self.replay_buffer = ReplayBuffer(buffer_size=config.buffer_size, prioritized_replay=config.prioritized_replay)
+
+        n_obs = env.observation_space.shape[0]
+        n_act = env.action_space.shape[0]
+
+        self.scaler = Scaler(self.env, debug=self.cfg.debug)
+        
+        self.policy, self.target_policy, self.critic, self.target_critic = self._build_networks(n_obs, n_act, h)
+
+        self._init_optimizers()
+
+        self.noise_generator = self._init_noise()
+
+
+        self.learner = TD3Update(
+            actor=self.policy,
+            critic=self.critic,
+            target_actor=self.target_policy,
+            target_critic=self.target_critic,
+            critic_optimizer=self.critic_optimizer,
+            actor_optimizer=self.pol_optimizer,
+            replay_buffer=self.replay_buffer,
+            scaler=self.scaler,
+            config=config,
+            device=self.device,
+            beta=self.beta,
+        )
+
+
+        self.logger.info(
+            f"Network sizes | "
+            f"policy_params={sum(p.numel() for p in self.policy.parameters())}, "
+            f"critic_params={sum(p.numel() for p in self.critic.parameters())}"
+        )
+
+        self.logger.info(
+            f"TD3 init | obs={n_obs}, act={n_act}, "
+            f"gamma={self.cfg.gamma}, batch={self.cfg.batch_size}, "
+            f"policy_freq={self.cfg.policy_update_freq}, "
+            f"prio_replay={self.cfg.prioritized_replay}"
+        )
+
+
+    def _build_networks(self, n_obs, n_act, h):
+        critic = TwinCritic(
+            n_obs,
+            n_act,
+            h,
+            action_low=self.scaler.action_low,
+            action_high=self.scaler.action_high,
+        ).to(self.device)
+
+        target_critic = deepcopy(critic).to(self.device)
+
+        policy = FeedforwardNetwork(n_obs, n_act, h=h).to(self.device)
+        target_policy = deepcopy(policy).to(self.device)
+
+        for net in (target_critic, target_policy):
+            for p in net.parameters():
+                p.requires_grad = False
+
+        return policy, target_policy, critic, target_critic
+
+
+    def _init_noise(self):
+        if self.cfg.noise_mode == "ornstein-uhlenbeck":
+            return OUActionNoise(
+                mean=np.zeros(self.env.action_space.shape),
+                std_deviation=self.cfg.action_noise_scale
+                * np.ones(self.env.action_space.shape),
+            )
+        if self.cfg.noise_mode == "gaussian":
+            return lambda: np.random.normal(
+                0, self.cfg.action_noise_scale, self.env.action_space.shape
+            )
+        raise ValueError(f"Unknown noise mode: {self.cfg.noise_mode}")
+
+
+    def _init_optimizers(self):
+        self.critic_optimizer = torch.optim.Adam(
+            self.critic.parameters(), lr=self.cfg.lr_q, eps=1e-6, weight_decay=self.cfg.wd_q
+        )
+
+        self.pol_optimizer = torch.optim.Adam(
+            self.policy.parameters(), lr=self.cfg.lr_pol, eps=1e-6, weight_decay=self.cfg.wd_pol
+        )
+
+        self.q_loss = weighted_smooth_l1_loss
+
+
+    def reset(self):
+        if self.cfg.noise_mode == "ornstein-uhlenbeck":
+            self.noise_generator.reset()
+            self.logger.debug("OU noise reset")
+
+
+    def get_policy_action(self, state):
+        return self.policy(state)
+
+    def update_step(self, inds=None):
+        state, action, reward, next_state, done = self.replay_buffer.sample(
+            inds=inds, batch_size=self.cfg.batch_size
+        )
+
+        state = to_torch(state, device=self.device)
+        action = to_torch(action, device=self.device)
+        reward = to_torch(reward, device=self.device)
+        next_state = to_torch(next_state, device=self.device)
+        done = to_torch(done, device=self.device)
+
+        actor_loss, critic_loss = self.learner.update(
+            state, action, reward, next_state, done
+        )
+
+        return actor_loss, critic_loss
+
+
+    def get_action(self, state, noise=True, eval_mode=False):
+        if not eval_mode:
+            self.total_steps += 1
+
+        if self._in_random_phase(eval_mode):
+            return self.env.action_space.sample()
+
+        state = to_torch(state, device=self.device)
+        action = self.policy(state)
+
+        if noise and not eval_mode:
+            action = self._add_noise(action)
+
+        action = self.scaler.scale_action(action)
+        return action.detach().cpu().numpy()
+    
+
+    def _in_random_phase(self, eval_mode):
+        return not eval_mode and self.total_steps < self.cfg.start_steps
+
+
+    def _add_noise(self, action):
+        noise_np = self.noise_generator()
+        noise = torch.tensor(noise_np, device=self.device, dtype=torch.float32)
+        return torch.clamp(action + noise, -1, 1)
+
+    def save(self, path):
+        torch.save({
+            "policy": self.policy.state_dict(),
+            "critic": self.critic.state_dict(),
+            "target_policy": self.target_policy.state_dict(),
+            "target_critic": self.target_critic.state_dict(),
+        }, path)
