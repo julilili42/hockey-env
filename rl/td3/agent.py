@@ -120,7 +120,6 @@ class TD3Agent:
     def reset(self):
         if self.cfg.noise_mode == "ornstein-uhlenbeck":
             self.noise_generator.reset()
-            self.logger.debug("OU noise reset")
 
 
     def get_policy_action(self, state):

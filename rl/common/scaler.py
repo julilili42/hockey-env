@@ -56,8 +56,6 @@ class Scaler:
         self._step += 1
 
         if self.action_scaling:
-            if self.debug and self._step % 1000 == 0:
-                self.logger.debug("Action scaling disabled (already env-scaled)")
             return action
 
         scaled = self.action_low + (action + 1.0) * 0.5 * self.action_range

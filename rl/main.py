@@ -9,21 +9,25 @@ from rl.td3.config import TD3Config
 from rl.utils.logger import Logger
 from rl.utils.plotter import MetricsPlotter
 from rl.utils.metrics import save_metrics
+from rl.experiment.directories import create_cluster_run_dirs
+from rl.experiment.tracking import (
+    set_global_seed,
+    create_run_info,
+    finalize_run_info,
+    save_run_info,
+    save_config,
+)
 
 def setup_run_dirs(run_name):
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    exp_dir = os.path.join(base_dir, "experiments", run_name)
-
-    log_dir = os.path.join(exp_dir, "logs")
-    model_dir = os.path.join(exp_dir, "models")
-    metrics_dir = os.path.join(exp_dir, "metrics")
-    plot_dir = os.path.join(exp_dir, "plots")
-
-    for d in (log_dir, model_dir, metrics_dir, plot_dir):
-        os.makedirs(d, exist_ok=True)
-
-    return log_dir, model_dir, metrics_dir, plot_dir
-
+    dirs = create_cluster_run_dirs(run_name, base_dir)
+    return (
+        dirs["logs"],
+        dirs["models"],
+        dirs["metrics"],
+        dirs["plots"],
+        dirs["config"],
+    )
 
 def train_td3(train_env, eval_env, config, model_dir, metrics_dir, plot_dir, episodes, hidden_size, resume_from=None,):
     agent = TD3Agent(env=train_env, config=config, h=hidden_size)
@@ -46,17 +50,37 @@ def train_td3(train_env, eval_env, config, model_dir, metrics_dir, plot_dir, epi
     return trainer
 
 
-def run_experiment(weak_opponent, episodes, hidden_size=256, resume_from=None):
-    run_name = "weak" if weak_opponent else "strong"
-    log_dir, model_dir, metrics_dir, plot_dir = setup_run_dirs(run_name)
+def run_experiment(mode, eval_vs_weak, episodes, hidden_size=256, resume_from=None):
+    seed = 42
+    set_global_seed(seed)
+
+    run_name = f"{mode}_eval_{'weak' if eval_vs_weak else 'strong'}"
+    log_dir, model_dir, metrics_dir, plot_dir, config_dir = setup_run_dirs(run_name)
 
     logger = Logger.get_logger(os.path.join(log_dir, "run.log"))
     logger.info(f"=== NEW RUN STARTED | opponent={run_name} ===")
 
-    train_env = gym.make("Hockey-One-v0", weak_opponent=weak_opponent)
-    eval_env = gym.make("Hockey-One-v0", weak_opponent=weak_opponent)
+    eval_env = gym.make("Hockey-One-v0", weak_opponent=eval_vs_weak)
 
-    config = TD3Config()
+    if mode == "single":
+        config = TD3Config.single()
+        train_env = gym.make("Hockey-One-v0")
+    elif mode == "joint":
+        config = TD3Config.joint()
+        train_env = gym.make("Hockey-v0")
+    else:
+        raise ValueError("Unknown mode")
+
+    run_info = create_run_info(
+        config=config,
+        episodes_planned=episodes,
+        hidden_size=hidden_size,
+        eval_vs_weak=eval_vs_weak,
+        resume_from=resume_from,
+        seed=seed,
+    )
+
+    save_config(config, config_dir)
 
     trainer = train_td3(
         train_env,
@@ -70,10 +94,12 @@ def run_experiment(weak_opponent, episodes, hidden_size=256, resume_from=None):
         resume_from=resume_from,
     )
 
-    save_metrics(trainer.metrics, metrics_dir)
+    run_info = finalize_run_info(run_info, trainer)
+    save_run_info(run_info, config_dir)
 
-    plotter = MetricsPlotter(trainer.metrics)
-    plotter.save_all(plot_dir)
+    save_metrics(trainer.metrics, metrics_dir)
+    MetricsPlotter(trainer.metrics).save_all(plot_dir)
+
 
 def get_pretrained_path(name):
     base = os.path.dirname(__file__)
@@ -82,8 +108,9 @@ def get_pretrained_path(name):
 
 if __name__ == "__main__":
     run_experiment(
-        weak_opponent=False,
-        episodes=1_000,
+        mode = "single",
+        eval_vs_weak=False,
+        episodes=10_000,
         hidden_size = 256,
         resume_from=get_pretrained_path("weak/td3_weak_best.pt")
     )

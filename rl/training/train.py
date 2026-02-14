@@ -1,5 +1,7 @@
 import numpy as np
 import os
+import torch
+
 from rl.utils.logger import Logger
 from rl.utils.metrics import MetricsTracker
 from rl.utils.model_manager import ModelManager
@@ -7,6 +9,7 @@ from rl.utils.evaluator import Evaluator
 from rl.utils.metrics import save_metrics
 from rl.utils.plotter import MetricsPlotter
 from rl.utils.early_stopping import EarlyStopping
+from rl.training.opponent_manager import OpponentManager
 
 
 class TD3Trainer:
@@ -31,11 +34,18 @@ class TD3Trainer:
         self.eval_interval = eval_interval
 
 
+        if agent.cfg.training_mode == "joint":
+            self.opponent_manager = OpponentManager(
+                agent=self.agent,
+                config=self.agent.cfg,
+            )
+        else:
+            self.opponent_manager = None
+
         self.logger = Logger.get_logger()
         self.metrics = MetricsTracker()
         self.evaluator = Evaluator(eval_env, episodes=100)
         self.model_manager = ModelManager(model_dir)
-
         self.early_stopper = EarlyStopping(
             patience=self.agent.cfg.early_patience,
             min_delta=self.agent.cfg.early_min_delta,
@@ -61,6 +71,9 @@ class TD3Trainer:
     def train(self):
         try:
             for ep in range(1, self.max_episodes + 1):
+                if self.opponent_manager is not None:
+                    self.opponent_manager.update_schedule(ep, self.max_episodes)
+
                 self._log_episode_start(ep)
 
                 ep_reward, steps = self._run_episode()
@@ -71,6 +84,41 @@ class TD3Trainer:
                 actor_loss, critic_loss = self._train_agent(ep)
 
                 self._maybe_evaluate(ep, actor_loss, critic_loss)
+
+                if self.opponent_manager is not None and ep % 200 == 0:
+                    stats = self.opponent_manager.stats
+                    total = sum(stats.values()) + 1e-8
+
+                    strong_ratio = stats["strong"] / total
+                    weak_ratio = stats["weak"] / total
+                    sp_ratio = stats["self_play"] / total
+
+                    self.logger.info(
+                        f"Opponent dist | "
+                        f"strong={strong_ratio:.2f} | "
+                        f"weak={weak_ratio:.2f} | "
+                        f"self_play={sp_ratio:.2f} | "
+                        f"self_play_prob={self.opponent_manager.self_play_prob:.2f}"
+                    )
+
+                    print(
+                        f"[Opponent] strong={strong_ratio:.2f} "
+                        f"weak={weak_ratio:.2f} "
+                        f"self_play={sp_ratio:.2f}"
+                    )
+
+                    self.opponent_manager.reset_stats()
+
+                    self.metrics.log_opponent_dist(
+                        episode=ep,
+                        strong=strong_ratio,
+                        weak=weak_ratio,
+                        self_play=sp_ratio,
+                        self_play_prob=self.opponent_manager.self_play_prob,
+                    )
+
+
+
 
         except KeyboardInterrupt:
             self.logger.warning("Training interrupted manually.")
@@ -91,28 +139,33 @@ class TD3Trainer:
 
     def _run_episode(self):
         obs, _ = self.train_env.reset()
-        
-        if np.any(np.isnan(obs)) or np.any(np.isinf(obs)):
-            self.logger.error(f"NaN/Inf in reset obs: {obs}")
-
         self.agent.reset()
+
+        if self.opponent_manager is not None:
+            self.opponent_manager.step()
 
         ep_reward = 0
         steps = 0
 
         for _ in range(self.max_steps):
-            action = self.agent.get_action(obs, noise=True)
-            next_obs, reward, done, trunc, _ = self.train_env.step(action)
+            if self.agent.cfg.training_mode == "joint":
+                action1 = self.agent.get_action(obs, noise=True)
+                obs2 = self.train_env.unwrapped.obs_agent_two()
+                action2 = self.opponent_manager.select_action(obs2)
 
-            if np.any(np.isnan(next_obs)) or np.any(np.isinf(next_obs)):
-                self.logger.error(f"NaN/Inf in next_obs BEFORE buffer: {next_obs}")
+                joint_action = np.concatenate([action1, action2])
+                next_obs, reward, done, trunc, _ = self.train_env.step(joint_action)
 
-            if not np.isfinite(reward):
-                self.logger.error(f"Non-finite reward: {reward}")
+                stored_action = action1
+
+            else:
+                stored_action = self.agent.get_action(obs, noise=True)
+                next_obs, reward, done, trunc, _ = self.train_env.step(stored_action)
 
             self.agent.replay_buffer.push(
-                obs, action, reward, next_obs, done or trunc
+                obs, stored_action, reward, next_obs, done or trunc
             )
+
 
             ep_reward += reward
             obs = next_obs
@@ -122,6 +175,8 @@ class TD3Trainer:
                 break
 
         return ep_reward, steps
+
+
 
 
     def _train_agent(self, ep):

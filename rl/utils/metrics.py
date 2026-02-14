@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import json
 
 
 class MetricsTracker:
@@ -8,6 +9,8 @@ class MetricsTracker:
         self.actor_losses = []
         self.critic_losses = []
         self.winrates = []
+        self.opponent_history = []
+
 
     def log_episode(self, reward):
         self.episode_rewards.append(reward)
@@ -19,6 +22,17 @@ class MetricsTracker:
 
     def log_eval(self, winrate):
         self.winrates.append(winrate)
+
+    def log_opponent_dist(self, episode, strong, weak, self_play, self_play_prob):
+        self.opponent_history.append({
+            "episode": episode,
+            "strong": strong,
+            "weak": weak,
+            "self_play": self_play,
+            "self_play_prob": self_play_prob,
+        })
+
+
 
     def moving_avg(self, window=100):
         if len(self.episode_rewards) < window:
@@ -38,10 +52,13 @@ class MetricsTracker:
 def save_metrics(metrics, save_dir):
     os.makedirs(save_dir, exist_ok=True)
 
-    np.savez(
-        os.path.join(save_dir, "metrics.npz"),
-        rewards=metrics.episode_rewards,
-        actor_losses=metrics.actor_losses,
-        critic_losses=metrics.critic_losses,
-        winrates=metrics.winrates,
-    )
+    data = {
+        "episode_rewards": metrics.episode_rewards,
+        "actor_losses": metrics.actor_losses,
+        "critic_losses": metrics.critic_losses,
+        "winrates": metrics.winrates,
+        "opponent_history": metrics.opponent_history,
+    }
+
+    with open(os.path.join(save_dir, "metrics.json"), "w") as f:
+        json.dump(data, f, indent=4)

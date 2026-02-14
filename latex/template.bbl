@@ -1,0 +1,8 @@
+\begin{thebibliography}{1}
+
+\bibitem{wang2016:DDQN}
+Z.~Wang, T.~Schaul, M.~Hessel, H.~Hasselt, M.~Lanctot, and N.~Freitas.
+\newblock Dueling network architectures for deep reinforcement learning.
+\newblock In M.~F. Balcan and K.~Q. Weinberger, editors, {\em Proceedings of The 33rd International Conference on Machine Learning}, volume~48 of {\em Proceedings of Machine Learning Research}, pages 1995--2003, New York, New York, USA, 20--22 Jun 2016. PMLR.
+
+\end{thebibliography}
