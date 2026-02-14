@@ -1,8 +1,8 @@
 \begin{thebibliography}{1}
 
-\bibitem{wang2016:DDQN}
-Z.~Wang, T.~Schaul, M.~Hessel, H.~Hasselt, M.~Lanctot, and N.~Freitas.
-\newblock Dueling network architectures for deep reinforcement learning.
-\newblock In M.~F. Balcan and K.~Q. Weinberger, editors, {\em Proceedings of The 33rd International Conference on Machine Learning}, volume~48 of {\em Proceedings of Machine Learning Research}, pages 1995--2003, New York, New York, USA, 20--22 Jun 2016. PMLR.
+\bibitem{fujimoto2018:TD3}
+S.~Fujimoto, H.~van Hoof, and D.~Meger.
+\newblock Addressing function approximation error in actor-critic methods.
+\newblock In J.~Dy and A.~Krause, editors, {\em Proceedings of the 35th International Conference on Machine Learning}, volume~80 of {\em Proceedings of Machine Learning Research}, pages 1587--1596, Stockholmsmässan, Stockholm Sweden, 10--15 Jul 2018. PMLR.
 
 \end{thebibliography}

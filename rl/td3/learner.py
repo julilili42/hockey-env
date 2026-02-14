@@ -2,9 +2,10 @@ import torch
 import numpy as np
 from rl.utils.torch_utils import to_torch, weighted_smooth_l1_loss
 from rl.utils.logger import Logger
+from rl.replay.prioritized_buffer import PrioritizedReplayBuffer
 
 
-class TD3Update:
+class TD3Learner:
     def __init__(
         self,
         actor,
@@ -40,10 +41,12 @@ class TD3Update:
         self.rho_actor = 1 - config.tau_actor
         self.rho_critic = 1 - config.tau_critic
 
+        
+
         self.target_noise_scale = config.target_action_noise_scale
         self.target_noise_clip = config.target_action_noise_clip
 
-        self.prioritized = config.prioritized_replay
+        self.prioritized = isinstance(replay_buffer, PrioritizedReplayBuffer)
         self.beta = beta
 
         self.q_loss = weighted_smooth_l1_loss
@@ -124,11 +127,6 @@ class TD3Update:
                 f"target_max={target.max().item():.3f}"
             )
 
-        
-
-
-
-
         weights = self._compute_importance_weights() if self.prioritized else None
 
         loss1 = self.q_loss(q1, target, weights=weights)
@@ -198,6 +196,10 @@ class TD3Update:
 
     def _compute_importance_weights(self):
         probs = self.replay_buffer.get_last_probs()
+
+        if probs is None:
+            return None
+        
         weights = (1 / (probs * self.replay_buffer.size)) ** self.beta
         max_w = np.max(weights)
         if max_w > 0:

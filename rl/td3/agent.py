@@ -1,35 +1,52 @@
 import torch
 import numpy as np
 from copy import deepcopy
-from rl.common.replay_buffer import ReplayBufferPrioritized as ReplayBuffer
-from rl.common.noise import OUActionNoise
 from rl.common.scaler import Scaler
+from rl.common.device import device
+from rl.common.noise import OrnsteinUhlenbeckNoise, GaussianNoise, PinkNoise, UniformNoise
 from rl.td3.networks import ActorNetwork
 from rl.td3.config import TD3Config
-from rl.common.device import device
 from rl.td3.networks import TwinQNetwork
-from rl.td3.update import TD3Update
+from rl.td3.learner import TD3Learner
 from rl.utils.torch_utils import to_torch
 from rl.utils.logger import Logger
+from rl.replay.uniform_buffer import UniformReplayBuffer
+from rl.replay.prioritized_buffer import PrioritizedReplayBuffer
 
 
 class TD3Agent:
     def __init__(
         self,
         env,
-        config: TD3Config,
-        zeta=0.97, # for setting beta
+        config: TD3Config, 
         h=64,
+        max_total_steps=None,
+        seed=None
     ):
         self.logger = Logger.get_logger()
         
+        self.seed = seed
         self.env = env
         self.cfg = config
         self.device = device
         self.total_steps = 0
 
-        self.beta = 1.0 - zeta / 2.0
-        self.replay_buffer = ReplayBuffer(buffer_size=config.buffer_size, prioritized_replay=config.prioritized_replay)
+        self.beta = self.cfg.beta
+        self.current_noise_scale = self.cfg.action_noise_scale
+        self.initial_noise_scale = self.cfg.action_noise_scale
+        self.max_total_steps = max_total_steps
+
+
+
+
+        if config.prioritized_replay:
+            self.replay_buffer = PrioritizedReplayBuffer(
+                buffer_size=config.buffer_size
+            )
+        else:
+            self.replay_buffer = UniformReplayBuffer(
+                buffer_size=config.buffer_size
+            )
 
         n_obs = env.observation_space.shape[0]
         n_act = env.action_space.shape[0]
@@ -42,7 +59,7 @@ class TD3Agent:
 
         self.noise_generator = self._init_noise()
 
-        self.learner = TD3Update(
+        self.learner = TD3Learner(
             actor=self.policy,
             critic=self.critic,
             target_actor=self.target_policy,
@@ -93,17 +110,37 @@ class TD3Agent:
 
 
     def _init_noise(self):
+        action_dim = self.env.action_space.shape[0]
+
         if self.cfg.noise_mode == "ornstein-uhlenbeck":
-            return OUActionNoise(
-                mean=np.zeros(self.env.action_space.shape),
+            return OrnsteinUhlenbeckNoise(
+                mean=np.zeros(action_dim),
                 std_deviation=self.cfg.action_noise_scale
-                * np.ones(self.env.action_space.shape),
+                * np.ones(action_dim),
             )
+
         if self.cfg.noise_mode == "gaussian":
-            return lambda: np.random.normal(
-                0, self.cfg.action_noise_scale, self.env.action_space.shape
+            return GaussianNoise(
+                shape=(action_dim,),
+                scale=self.cfg.action_noise_scale
             )
+
+        if self.cfg.noise_mode == "pink":
+            return PinkNoise(
+                shape=(action_dim,),
+                scale=self.cfg.action_noise_scale,
+                seq_len=self.cfg.max_steps
+            )
+        
+        if self.cfg.noise_mode == "uniform":
+            return UniformNoise(
+                shape=(action_dim,),
+                scale=self.cfg.action_noise_scale
+            )
+
+
         raise ValueError(f"Unknown noise mode: {self.cfg.noise_mode}")
+
 
 
     def _init_optimizers(self):
@@ -118,7 +155,7 @@ class TD3Agent:
 
 
     def reset(self):
-        if self.cfg.noise_mode == "ornstein-uhlenbeck":
+        if hasattr(self.noise_generator, "reset"):
             self.noise_generator.reset()
 
 
@@ -128,9 +165,9 @@ class TD3Agent:
     def update_step(self, inds=None):
         state, action, reward, next_state, done = \
             self.replay_buffer.sample(
-                inds=inds,
                 batch_size=self.cfg.batch_size
             )
+
 
         state = to_torch(state, device=self.device)
         action = to_torch(action, device=self.device)
@@ -156,14 +193,16 @@ class TD3Agent:
             action = self.policy(state)
 
         if noise and not eval_mode:
+            self._update_noise_scale()
             action = self._add_noise(action)
+
 
         action = self.scaler.scale_action(action)
 
         if noise and not eval_mode and self.total_steps % 2000 == 0:
             self.logger.info(
                 f"Exploration | "
-                f"noise_scale={self.cfg.action_noise_scale}"
+                f"noise_scale={self.current_noise_scale}"
             )
 
         return action.detach().cpu().numpy()
@@ -175,8 +214,42 @@ class TD3Agent:
 
     def _add_noise(self, action):
         noise_np = self.noise_generator()
-        noise = torch.tensor(noise_np, device=self.device, dtype=torch.float32)
+
+        scaled_noise = noise_np * (
+            self.current_noise_scale / self.initial_noise_scale
+        )
+
+        noise = torch.tensor(
+            scaled_noise,
+            device=self.device,
+            dtype=torch.float32
+        )
+
         return torch.clamp(action + noise, -1, 1)
+
+    
+    def _update_noise_scale(self):
+        if not self.cfg.use_noise_annealing:
+            self.current_noise_scale = self.initial_noise_scale
+            return
+        
+        if self.max_total_steps is None:
+            return
+
+        progress = min(self.total_steps / self.max_total_steps, 1.0)
+
+        if self.cfg.noise_anneal_mode == "linear":
+            scale = self.initial_noise_scale * (1 - progress)
+
+        elif self.cfg.noise_anneal_mode == "exp":
+            scale = self.initial_noise_scale * (0.1 ** progress)
+
+        else:
+            raise ValueError("Unknown anneal mode")
+
+        self.current_noise_scale = max(scale, self.cfg.noise_min_scale)
+
+
 
     def save(self, path):
         torch.save({

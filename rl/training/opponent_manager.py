@@ -38,25 +38,25 @@ class OpponentManager:
         # BOT CURRICULUM
         # ------------------------
 
-        # Phase 1: nur weak (Stabilisierung)
-        if progress < 0.2:
+        # Phase 1: very short warmup
+        if progress < 0.1:
             self.current_strong_prob = 0.0
             self.current_weak_prob = 1.0
 
-        # Phase 2: leichter strong-Anteil
-        elif progress < 0.4:
-            self.current_strong_prob = 0.2
-            self.current_weak_prob = 0.8
+        # Phase 2: introduce strong quickly
+        elif progress < 0.3:
+            self.current_strong_prob = 0.4
+            self.current_weak_prob = 0.6
 
-        # Phase 3: balanced
-        elif progress < 0.7:
-            self.current_strong_prob = 0.5
-            self.current_weak_prob = 0.5
-
-        # Phase 4: strong dominant
-        else:
+        # Phase 3: strong dominant
+        elif progress < 0.6:
             self.current_strong_prob = 0.7
             self.current_weak_prob = 0.3
+
+        # Phase 4: almost full strong
+        else:
+            self.current_strong_prob = 0.85
+            self.current_weak_prob = 0.15
 
 
         # ------------------------
@@ -67,18 +67,19 @@ class OpponentManager:
             self.self_play_prob = 0.0
             return
 
-        # erst nach 60% Training starten
-        if progress < 0.6:
+        # start self-play earlier
+        if progress < 0.4:
             self.self_play_prob = 0.0
 
-        # linear ramp 60% → 80%
-        elif progress < 0.8:
-            ramp = (progress - 0.6) / 0.2
+        # ramp up faster
+        elif progress < 0.7:
+            ramp = (progress - 0.4) / 0.3
             self.self_play_prob = ramp * self.cfg.self_play_max_prob
 
-        # danach max
+        # full self-play
         else:
             self.self_play_prob = self.cfg.self_play_max_prob
+
 
 
 

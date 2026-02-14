@@ -2,9 +2,10 @@ import numpy as np
 import torch
 
 class Evaluator:
-    def __init__(self, env, episodes=100):
+    def __init__(self, env, episodes=100, label=None):
         self.env = env
         self.episodes = episodes
+        self.label = label
 
     def evaluate(self, agent):
         agent.policy.eval()
@@ -13,7 +14,7 @@ class Evaluator:
         
         with torch.no_grad():
           for i in range(self.episodes):
-              obs, _ = self.env.reset(seed=i)
+              obs, _ = self.env.reset(seed=agent.seed + i) #seed=i
               done = False
 
               while not done:

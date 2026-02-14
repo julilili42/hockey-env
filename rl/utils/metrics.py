@@ -8,9 +8,15 @@ class MetricsTracker:
         self.episode_rewards = []
         self.actor_losses = []
         self.critic_losses = []
-        self.winrates = []
-        self.opponent_history = []
 
+        # Single mode
+        self.winrates = []
+
+        # Joint mode (optional)
+        self.winrates_strong = []
+        self.winrates_weak = []
+
+        self.opponent_history = []
 
     def log_episode(self, reward):
         self.episode_rewards.append(reward)
@@ -20,8 +26,14 @@ class MetricsTracker:
             self.actor_losses.append(actor_loss)
         self.critic_losses.append(critic_loss)
 
+    # ---- Single ----
     def log_eval(self, winrate):
         self.winrates.append(winrate)
+
+    # ---- Joint ----
+    def log_eval_dual(self, strong, weak):
+        self.winrates_strong.append(strong)
+        self.winrates_weak.append(weak)
 
     def log_opponent_dist(self, episode, strong, weak, self_play, self_play_prob):
         self.opponent_history.append({
@@ -31,6 +43,7 @@ class MetricsTracker:
             "self_play": self_play,
             "self_play_prob": self_play_prob,
         })
+
 
 
 
@@ -57,8 +70,11 @@ def save_metrics(metrics, save_dir):
         "actor_losses": metrics.actor_losses,
         "critic_losses": metrics.critic_losses,
         "winrates": metrics.winrates,
+        "winrates_strong": metrics.winrates_strong,
+        "winrates_weak": metrics.winrates_weak,
         "opponent_history": metrics.opponent_history,
     }
+
 
     with open(os.path.join(save_dir, "metrics.json"), "w") as f:
         json.dump(data, f, indent=4)

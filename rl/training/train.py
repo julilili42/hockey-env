@@ -17,21 +17,18 @@ class TD3Trainer:
     self,
     agent,
     train_env,
-    eval_env,
+    evaluators,
     model_dir,
     metrics_dir,
     plot_dir,
-    max_episodes=2000,
-    max_steps=500,
-    train_iters=32,
-    eval_interval=200,
+    max_episodes
 ):
         self.agent = agent
         self.train_env = train_env
         self.max_episodes = max_episodes
-        self.max_steps = max_steps
-        self.train_iters = train_iters
-        self.eval_interval = eval_interval
+        self.max_steps = agent.cfg.max_steps
+        self.train_iters = agent.cfg.train_iters
+        self.eval_interval = agent.cfg.eval_interval
 
 
         if agent.cfg.training_mode == "joint":
@@ -44,7 +41,7 @@ class TD3Trainer:
 
         self.logger = Logger.get_logger()
         self.metrics = MetricsTracker()
-        self.evaluator = Evaluator(eval_env, episodes=100)
+        self.evaluators = evaluators
         self.model_manager = ModelManager(model_dir)
         self.early_stopper = EarlyStopping(
             patience=self.agent.cfg.early_patience,
@@ -60,9 +57,9 @@ class TD3Trainer:
 
         self.logger.info(
             f"Trainer init | episodes={max_episodes}, "
-            f"max_steps={max_steps}, "
-            f"train_iters={train_iters}, "
-            f"eval_interval={eval_interval}"
+            f"max_steps={self.max_steps}, "
+            f"train_iters={self.train_iters}, "
+            f"eval_interval={self.eval_interval}"
         )
 
 
@@ -76,7 +73,9 @@ class TD3Trainer:
 
                 self._log_episode_start(ep)
 
+                self.current_episode = ep
                 ep_reward, steps = self._run_episode()
+
 
                 self.metrics.log_episode(ep_reward)
                 self._log_episode_end(ep, ep_reward, steps)
@@ -102,7 +101,7 @@ class TD3Trainer:
                     )
 
                     print(
-                        f"[Opponent] strong={strong_ratio:.2f} "
+                        f"[TRAINING MIX] strong={strong_ratio:.2f} "
                         f"weak={weak_ratio:.2f} "
                         f"self_play={sp_ratio:.2f}"
                     )
@@ -138,7 +137,7 @@ class TD3Trainer:
 
 
     def _run_episode(self):
-        obs, _ = self.train_env.reset()
+        obs, _ = self.train_env.reset(seed=self.agent.seed + self.current_episode)
         self.agent.reset()
 
         if self.opponent_manager is not None:
@@ -216,42 +215,50 @@ class TD3Trainer:
         if ep % self.eval_interval != 0:
             return
 
-        wr = self.evaluator.evaluate(self.agent)
-
         avg_reward_100 = self.metrics.avg_reward(100)
 
-        info = (
-            f"Eval ep {ep} | "
-            f"winrate={wr:.3f} | "
-            f"avg_reward_100={avg_reward_100:.2f} | "
-            f"actor_loss={actor_loss} | "
-            f"critic_loss={critic_loss}"
-        )
+        if "single" in self.evaluators:
+            wr = self.evaluators["single"].evaluate(self.agent)
+
+            info = (
+                f"[EVAL] ep={ep:5d} | "
+                f"WR={wr:.3f} | "
+                f"R100={avg_reward_100:.2f}"
+            )
+
+            self.metrics.log_eval(wr)
+            score_for_model = wr
+
+        else:
+            wr_strong = self.evaluators["strong"].evaluate(self.agent)
+            wr_weak = self.evaluators["weak"].evaluate(self.agent)
+
+            info = (
+                f"[EVAL] ep={ep:5d} | "
+                f"WR_strong={wr_strong:.3f} | "
+                f"WR_weak={wr_weak:.3f} | "
+                f"R100={avg_reward_100:.2f}"
+            )
+
+            self.metrics.log_eval_dual(wr_strong, wr_weak)
+            score_for_model = wr_strong
 
         self.logger.info(info)
         print(info)
 
-        self.metrics.log_eval(wr)
-
         if self.early_stopper is not None:
-            if self.early_stopper.step(wr):
-                self.logger.info(
-                    f"Early stopping triggered | "
-                    f"best_winrate={self.early_stopper.best_score:.3f}"
-                )
-                print("Early stopping triggered.")
+            if self.early_stopper.step(score_for_model):
                 raise StopIteration
-
 
         self.model_manager.update(
             agent=self.agent,
-            score=wr,
+            score=score_for_model,
             episode=ep,
         )
 
         save_metrics(self.metrics, self.metrics_dir)
-        plotter = MetricsPlotter(self.metrics)
-        plotter.save_all(self.plot_dir)
+        MetricsPlotter(self.metrics).save_all(self.plot_dir)
+
 
 
 
