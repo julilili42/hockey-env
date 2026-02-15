@@ -6,7 +6,6 @@ def per_experiments():
     return [
         Experiment(
             mode="single",
-            eval_vs_weak=False,
             episodes=10_000,
             overrides=dict(prioritized_replay=True),
             seed=s,
@@ -15,7 +14,6 @@ def per_experiments():
     ] + [
         Experiment(
             mode="single",
-            eval_vs_weak=False,
             episodes=10_000,
             overrides=dict(prioritized_replay=False),
             seed=s,
@@ -33,7 +31,6 @@ def noise_experiments():
             exps.append(
                 Experiment(
                     mode="single",
-                    eval_vs_weak=False,
                     episodes=10_000,
                     overrides=dict(noise_mode=noise),
                     seed=seed,
@@ -48,14 +45,12 @@ def pretrained_vs_scratch():
     return [
         Experiment(
             mode="single",
-            eval_vs_weak=False,
             episodes=10_000,
             resume_from=pretrained,
             seed=1,
         ),
         Experiment(
             mode="single",
-            eval_vs_weak=False,
             episodes=10_000,
             resume_from=None,
             seed=1,
@@ -71,7 +66,6 @@ def noise_annealing_experiments():
         exps.append(
             Experiment(
                 mode="single",
-                eval_vs_weak=False,
                 episodes=10_000,
                 overrides=dict(
                     use_noise_annealing=False
@@ -85,7 +79,6 @@ def noise_annealing_experiments():
         exps.append(
             Experiment(
                 mode="single",
-                eval_vs_weak=False,
                 episodes=10_000,
                 overrides=dict(
                     use_noise_annealing=True,

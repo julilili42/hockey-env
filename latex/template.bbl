@@ -1,5 +1,17 @@
 \begin{thebibliography}{1}
 
+\bibitem{box2d2023}
+E.~Catto.
+\newblock Box2d physics engine documentation.
+\newblock \url{https://box2d.org/documentation/md_simulation.html}, 2023.
+\newblock Accessed: 2026-02-15.
+
+\bibitem{gymnasium2023}
+{Farama Foundation}.
+\newblock Gymnasium: A standard api for reinforcement learning environments.
+\newblock \url{https://github.com/Farama-Foundation/Gymnasium}, 2023.
+\newblock Accessed: 2026-02-15.
+
 \bibitem{fujimoto2018:TD3}
 S.~Fujimoto, H.~van Hoof, and D.~Meger.
 \newblock Addressing function approximation error in actor-critic methods.

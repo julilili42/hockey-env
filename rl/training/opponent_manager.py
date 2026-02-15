@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 from hockey.hockey_env import BasicOpponent
 from rl.training.self_play import SelfPlayManager
 
@@ -27,76 +26,38 @@ class OpponentManager:
         else:
             self.self_play = None
 
-        self.self_play_prob = 0.0
+        self.current_self_play_prob = 0.0
         self.reset_stats()
 
 
     def update_schedule(self, episode, max_episodes):
         progress = episode / max_episodes
-
-        if self.cfg.training_mode == "single":
-            self._update_single(progress)
-        else:
-            self._update_joint(progress)
+        self._update_single(progress)
 
 
     def _update_single(self, progress):
-        """
-        Desired schedule:
-        - if starting from pretrained weak model:
-            Phase A: 70/30 strong/weak
-            Phase B: 80/10/10 strong/weak/self-play
-        - if training from scratch: (optional) go 100% strong to keep it strict
-        """
         if self.resume_from is None:
-            # scratch baseline
-            self._set_bot_probs(strong=1.0, weak=0.0)
-            self.self_play_prob = 0.0
+            #self._set_bot_probs(strong=0.5, weak=0.5, self_play=0.00)
+            self._set_bot_probs(strong=0.00, weak=1.0, self_play=0.00)
             return
 
-        # pretrained-start schedule
-        if progress < 0.6:
-            # 70/30 strong/weak
-            self._set_bot_probs(strong=0.7, weak=0.3)
-            self.self_play_prob = 0.0
-        else:
-            # 80/10/10 strong/weak/self-play
-            self._set_bot_probs(strong=0.8, weak=0.1)
-            self.self_play_prob = 0.1
+        if progress < 0.3:
+            self._set_bot_probs(strong=0.55, weak=0.45, self_play=0.00)
 
-
-    def _update_joint(self, progress):
-        if progress < 0.1:
-            strong_prob, weak_prob = 0.0, 1.0
-        elif progress < 0.3:
-            strong_prob, weak_prob = 0.4, 0.6
-        elif progress < 0.6:
-            strong_prob, weak_prob = 0.7, 0.3
-        else:
-            strong_prob, weak_prob = 0.85, 0.15
-
-        self._set_bot_probs(strong_prob, weak_prob)
-
-        if not self.use_self_play:
-            self.self_play_prob = 0.0
-            return
-
-        if progress < 0.4:
-            self.self_play_prob = 0.0
         elif progress < 0.7:
-            ramp = (progress - 0.4) / 0.3
-            self.self_play_prob = ramp * self.cfg.self_play_max_prob
+            self._set_bot_probs(strong=0.45, weak=0.45, self_play=0.10)
+
         else:
-            self.self_play_prob = self.cfg.self_play_max_prob
+            self._set_bot_probs(strong=0.5, weak=0.4, self_play=0.10)
 
 
-    def _set_bot_probs(self, strong, weak):
-        if strong + weak <= 0:
+    def _set_bot_probs(self, strong, weak, self_play):
+        if strong + weak + self_play <= 0:
             raise ValueError("Bot probabilities must sum to > 0")
 
         self.current_strong_prob = strong
         self.current_weak_prob = weak
-
+        self.current_self_play_prob = self_play
 
     def step(self):
         if self.self_play is not None:
@@ -111,7 +72,7 @@ class OpponentManager:
             self.use_self_play
             and self.self_play is not None
             and self.self_play.get_opponent() is not None
-            and r < self.self_play_prob
+            and r < self.current_self_play_prob
         ):
             self.stats["self_play"] += 1
             opponent_policy = self.self_play.get_opponent()

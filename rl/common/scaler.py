@@ -5,10 +5,9 @@ from rl.common.device import device
 
 
 class Scaler:
-    def __init__(self, env, debug=False):
+    def __init__(self, env):
         self.logger = Logger.get_logger()
 
-        self.debug = debug
         self.env = env
         self.action_space = env.action_space
         self.observation_space = env.observation_space
@@ -60,13 +59,6 @@ class Scaler:
 
         scaled = self.action_low + (action + 1.0) * 0.5 * self.action_range
 
-        if self.debug and self._step % 1000 == 0:
-            self.logger.debug(
-                f"Scale action | "
-                f"in=[{action.min().item():.2f},{action.max().item():.2f}] "
-                f"out=[{scaled.min().item():.2f},{scaled.max().item():.2f}]"
-            )
-
         return scaled
 
 
@@ -76,14 +68,6 @@ class Scaler:
             return action
 
         unscaled = ((action - self.action_low) / self.action_range) * 2 - 1.0
-
-        if self.debug and torch.any(torch.abs(unscaled) > 1.1):
-            self.logger.warning(
-                f"Unscaled action outside [-1,1]: "
-                f"min={unscaled.min().item():.2f}, "
-                f"max={unscaled.max().item():.2f}"
-            )
-
 
         return unscaled
 
@@ -98,15 +82,5 @@ class Scaler:
             return state
 
         unscaled = ((state - self.observation_low) / self.observation_range) * 2 - 1.0
-
-        if torch.any(torch.isnan(unscaled)) or torch.any(torch.isinf(unscaled)):
-            self.logger.error(
-                f"NaN in unscale_state | "
-                f"state_min={state.min().item():.3e}, "
-                f"state_max={state.max().item():.3e}, "
-                f"obs_low_inf={torch.isinf(self.observation_low).any().item()}, "
-                f"obs_range_inf={torch.isinf(self.observation_range).any().item()}"
-            )
-
 
         return unscaled

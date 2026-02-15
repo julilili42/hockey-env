@@ -49,13 +49,15 @@ class TD3Agent:
             )
 
         n_obs = env.observation_space.shape[0]
-        if config.training_mode == "single":
-            n_act = env.action_space.shape[0] // 2
+
+        if env.action_space.shape[0] == 8:
+            n_act = 4          
         else:
-            n_act = env.action_space.shape[0]
+            n_act = env.action_space.shape[0]  
 
 
-        self.scaler = Scaler(self.env, debug=self.cfg.debug)
+
+        self.scaler = Scaler(self.env)
         
         self.policy, self.target_policy, self.critic, self.target_critic = self._build_networks(n_obs, n_act, h)
 
@@ -93,12 +95,8 @@ class TD3Agent:
 
 
     def _build_networks(self, n_obs, n_act, h):
-        if self.cfg.training_mode == "single":
-            action_low = self.scaler.action_low[:n_act]
-            action_high = self.scaler.action_high[:n_act]
-        else:
-            action_low = self.scaler.action_low
-            action_high = self.scaler.action_high
+        action_low = self.scaler.action_low[:n_act]
+        action_high = self.scaler.action_high[:n_act]
 
         critic = TwinQNetwork(
             n_obs,
@@ -121,11 +119,7 @@ class TD3Agent:
 
 
     def _init_noise(self):
-        if self.cfg.training_mode == "single":
-            action_dim = self.env.action_space.shape[0] // 2
-        else:
-            action_dim = self.env.action_space.shape[0]
-
+        action_dim = self.env.action_space.shape[0] // 2
 
         if self.cfg.noise_mode == "ornstein-uhlenbeck":
             return OrnsteinUhlenbeckNoise(
@@ -201,10 +195,7 @@ class TD3Agent:
             self.total_steps += 1
 
         if self._in_random_phase(eval_mode):
-            if self.cfg.training_mode == "single":
-                return np.random.uniform(-1, 1, size=self.policy.fc3.out_features)
-            else:
-                return self.env.action_space.sample()
+            return np.random.uniform(-1, 1, size=self.policy.fc3.out_features)
 
 
         state = to_torch(state, device=self.device)

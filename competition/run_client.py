@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 import numpy as np
 import torch
 import gymnasium as gym
@@ -13,7 +12,7 @@ from rl.td3.agent import TD3Agent
 from rl.td3.config import TD3Config
 
 
-MODEL_PATH = "runs/20260215_002841_single_eval_strong_abcdefg_1/models/td3_best.pt"
+MODEL_PATH = "runs/20260215_155345_single_eval_strong_abcdefg_2/models/td3_best.pt"
 
 
 class TD3CompetitionAgent(Agent):
@@ -23,7 +22,7 @@ class TD3CompetitionAgent(Agent):
 
         self.env = gym.make("Hockey-One-v0", weak_opponent=False)
 
-        config = TD3Config.single()
+        config = TD3Config()
 
         self.td3 = TD3Agent(
             env=self.env,
@@ -35,7 +34,7 @@ class TD3CompetitionAgent(Agent):
         self.td3.policy.load_state_dict(checkpoint["policy"])
         self.td3.policy.eval()
 
-    def get_step(self, observation: list[float]) -> list[float]:
+    def get_step(self, observation):
         action = self.td3.get_action(
             np.array(observation),
             noise=False,
@@ -47,7 +46,7 @@ class TD3CompetitionAgent(Agent):
         print("Game started")
 
 
-    def on_end_game(self, result: bool, stats: list[float]) -> None:
+    def on_end_game(self, result, stats) -> None:
         text_result = "won" if result else "lost"
         print(
             f"Game ended: {text_result} | "
@@ -55,7 +54,7 @@ class TD3CompetitionAgent(Agent):
         )
 
 
-def initialize_agent(agent_args: list[str]) -> Agent:
+def initialize_agent(agent_args=None):
     return TD3CompetitionAgent()
 
 

@@ -6,7 +6,6 @@ from rl.td3.config import TD3Config
 @dataclass
 class Experiment:
     mode: str
-    eval_vs_weak: bool
     episodes: int
     hidden_size: int = 256
     resume_from: Optional[str] = None
@@ -37,12 +36,7 @@ class ExperimentScheduler:
         print(json.dumps(exp.__dict__, indent=4))
         print("-" * 60)
 
-        if exp.mode == "single":
-            config = TD3Config.single()
-        elif exp.mode == "joint":
-            config = TD3Config.joint()
-        else:
-            raise ValueError("Unknown mode")
+        config = TD3Config()
 
         for key, value in exp.overrides.items():
             if not hasattr(config, key):
@@ -51,7 +45,6 @@ class ExperimentScheduler:
 
         run_experiment(
             mode=exp.mode,
-            eval_vs_weak=exp.eval_vs_weak,
             episodes=exp.episodes,
             hidden_size=exp.hidden_size,
             resume_from=exp.resume_from,

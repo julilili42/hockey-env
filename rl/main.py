@@ -1,8 +1,6 @@
 import gymnasium as gym
 import hockey.hockey_env
-from hockey.hockey_env import BasicOpponent
 import os
-import numpy as np
 
 from rl.td3.agent import TD3Agent
 from rl.training.train import TD3Trainer
@@ -12,7 +10,6 @@ from rl.utils.logger import Logger
 from rl.utils.plotter import MetricsPlotter
 from rl.utils.metrics import save_metrics
 from rl.experiment.directories import create_cluster_run_dirs
-from rl.experiment.scheduler import ExperimentScheduler
 from rl.experiment.tracking import (
     set_global_seed,
     create_run_info,
@@ -20,7 +17,6 @@ from rl.experiment.tracking import (
     save_run_info,
     save_config,
 )
-from rl.experiment.scheduler import ExperimentScheduler
 from rl.experiment.definitions import get_pretrained_path
 
 
@@ -35,37 +31,19 @@ def setup_run_dirs(run_name):
         dirs["config"],
     )
 
-def build_envs_and_config(mode, eval_vs_weak):
-    if mode == "single":
-        config = TD3Config.single()
+def build_envs_and_config():
+    config = TD3Config()
 
-        train_env = gym.make("Hockey-v0")
+    train_env = gym.make("Hockey-v0")
 
-        strong_env = gym.make("Hockey-One-v0", weak_opponent=False)
-        weak_env   = gym.make("Hockey-One-v0", weak_opponent=True)
+    strong_env = gym.make("Hockey-One-v0", weak_opponent=False)
+    weak_env   = gym.make("Hockey-One-v0", weak_opponent=True)
 
-        evaluators = {
-            "single": Evaluator(
-                strong_env if not eval_vs_weak else weak_env,
-                episodes=config.eval_episodes,
-                label="SINGLE"
-            )
-        }
+    evaluators = {
+        "strong": Evaluator(strong_env, episodes=config.eval_episodes),
+        "weak": Evaluator(weak_env, episodes=config.eval_episodes),
+    }
 
-    elif mode == "joint":
-        config = TD3Config.joint()
-        train_env = gym.make("Hockey-v0")
-
-        strong_env = gym.make("Hockey-One-v0", weak_opponent=False)
-        weak_env   = gym.make("Hockey-One-v0", weak_opponent=True)
-
-        evaluators = {
-            "strong": Evaluator(strong_env, episodes=config.eval_episodes, label="STRONG"),
-            "weak":   Evaluator(weak_env,   episodes=config.eval_episodes, label="WEAK"),
-        }
-
-    else:
-        raise ValueError("Unknown mode")
 
     return config, train_env, evaluators
 
@@ -101,16 +79,17 @@ def train_td3(train_env, evaluators, config, model_dir, metrics_dir, plot_dir, e
     return trainer
 
 
-def run_experiment(mode, eval_vs_weak, episodes, hidden_size=256, resume_from=None, seed = 42, external_config=None):
+def run_experiment(mode, episodes, hidden_size=256, resume_from=None, seed = 42, external_config=None):
     set_global_seed(seed)
 
-    run_name = f"{mode}_eval_{'weak' if eval_vs_weak else 'strong'}"
+    run_name = f"{mode}_dual_eval"
+
     log_dir, model_dir, metrics_dir, plot_dir, config_dir = setup_run_dirs(run_name)
 
     logger = Logger.get_logger(os.path.join(log_dir, "run.log"))
-    logger.info(f"=== NEW RUN STARTED | opponent={run_name} ===")
+    logger.info("=== NEW RUN STARTED ===")
 
-    config, train_env, evaluators = build_envs_and_config(mode, eval_vs_weak)
+    config, train_env, evaluators = build_envs_and_config()
 
     if external_config is not None:
         config = external_config
@@ -119,7 +98,6 @@ def run_experiment(mode, eval_vs_weak, episodes, hidden_size=256, resume_from=No
         config=config,
         episodes_planned=episodes,
         hidden_size=hidden_size,
-        eval_vs_weak=eval_vs_weak,
         resume_from=resume_from,
         seed=seed,
     )
@@ -152,11 +130,10 @@ if __name__ == "__main__":
 
     run_experiment(
         mode="single",
-        eval_vs_weak=False,
-        episodes=1000,          
+        episodes=5_000,          
         hidden_size=256,
-        resume_from=pretrained,
-        seed=123
+        resume_from= None, #pretrained,
+        seed=420
     )
 
     #scheduler = ExperimentScheduler()

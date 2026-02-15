@@ -36,6 +36,21 @@
 \maketitle
 
 \section{Introduction}\label{sec:intro}
+Reinforcement Learning (RL) enables agents to learn decision-making strategies through interaction with an environment. At each time step, the agent observes the current state, selects an action, and receives a scalar reward. The objective is to maximize the expected cumulative reward over time. Continuous control tasks are particularly challenging due to high-dimensional action spaces and instability in value estimation.
+
+In this project, we consider a competitive air hockey environment implemented in Gymnasium~\cite{gymnasium2023} and based on a physics simulation using Box2D~\cite{box2d2023}. Two agents compete in a zero-sum setting. Each player controls translation, rotation, and shooting through continuous actions. The observation space consists of positional and velocity information for both players and the puck. Episodes terminate when a goal is scored or when a time limit is reached.
+
+The agent is trained by maximizing the reward signal provided by the environment. The reward includes goal outcomes and additional shaping components. Performance is evaluated separately using the win rate against predefined weak and strong opponents.
+
+The goals of this work are:
+
+\begin{enumerate}
+    \item Implement the Twin Delayed Deep Deterministic Policy Gradient (TD3) algorithm for continuous control in the hockey environment.
+    \item Analyze the effect of different replay strategies and exploration noise models.
+    \item Investigate the impact of self-play and pretrained initialization on learning stability and final performance.
+    \item Evaluate the learned policy using reward progression and win rate against fixed opponents.
+\end{enumerate}
+
 
 \section{Method}\label{sec:Method}
 \subsection{Twin Delayed Deep Deterministic Policy Gradients}

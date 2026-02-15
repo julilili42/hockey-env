@@ -18,7 +18,6 @@ def create_run_info(
     config,
     episodes_planned,
     hidden_size,
-    eval_vs_weak,
     resume_from,
     seed,
 ):
@@ -32,9 +31,8 @@ def create_run_info(
             "timestamp": timestamp,
         },
         "environment": {
-            "train_env": config.training_mode,
             "eval_env": "Hockey-One-v0",
-            "eval_opponent": "weak" if eval_vs_weak else "strong",
+            "eval_opponent": "dual",
         },
         "initialization": {
             "used_pretrained": resume_from is not None,
@@ -44,7 +42,6 @@ def create_run_info(
             "self_play_enabled": config.use_self_play,
             "self_play_interval": config.self_play_interval,
             "self_play_pool_size": config.self_play_pool_size,
-            "self_play_max_prob": config.self_play_max_prob,
         },
         "td3_core": {
             "gamma": config.gamma,

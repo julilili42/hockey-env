@@ -32,22 +32,11 @@ class TD3Trainer:
         self.eval_interval = agent.cfg.eval_interval
         self.resume_from = resume_from
 
-
-
-        if agent.cfg.training_mode == "joint":
-            self.opponent_manager = OpponentManager(
-                agent=self.agent,
-                config=self.agent.cfg,
-            )
-        elif agent.cfg.training_mode == "single":
-            self.opponent_manager = OpponentManager(
-                agent=self.agent,
-                config=self.agent.cfg,
-                resume_from=self.resume_from
-            )
-        else:
-            return ValueError("Invalid training mode.")
-
+        self.opponent_manager = OpponentManager(
+            agent=self.agent,
+            config=self.agent.cfg,
+            resume_from=self.resume_from
+        )
 
         self.logger = Logger.get_logger()
         self.metrics = MetricsTracker()
@@ -107,7 +96,7 @@ class TD3Trainer:
                         f"strong={strong_ratio:.2f} | "
                         f"weak={weak_ratio:.2f} | "
                         f"self_play={sp_ratio:.2f} | "
-                        f"self_play_prob={self.opponent_manager.self_play_prob:.2f}"
+                        f"self_play_prob={self.opponent_manager.current_self_play_prob:.2f}"
                     )
 
                     print(
@@ -123,7 +112,7 @@ class TD3Trainer:
                         strong=strong_ratio,
                         weak=weak_ratio,
                         self_play=sp_ratio,
-                        self_play_prob=self.opponent_manager.self_play_prob,
+                        self_play_prob=self.opponent_manager.current_self_play_prob,
                     )
 
 
@@ -157,16 +146,15 @@ class TD3Trainer:
         steps = 0
 
         for _ in range(self.max_steps):
-            if self.agent.cfg.training_mode in ["joint", "single"]:
-                action1 = self.agent.get_action(obs, noise=True)
+            action1 = self.agent.get_action(obs, noise=True)
 
-                obs2 = self.train_env.unwrapped.obs_agent_two()
-                action2 = self.opponent_manager.select_action(obs2)
+            obs2 = self.train_env.unwrapped.obs_agent_two()
+            action2 = self.opponent_manager.select_action(obs2)
 
-                joint_action = np.concatenate([action1, action2])
-                next_obs, reward, done, trunc, _ = self.train_env.step(joint_action)
+            joint_action = np.concatenate([action1, action2])
+            next_obs, reward, done, trunc, _ = self.train_env.step(joint_action)
 
-                stored_action = action1
+            stored_action = action1
 
             self.agent.replay_buffer.push(
                 obs, stored_action, reward, next_obs, done or trunc
@@ -218,40 +206,29 @@ class TD3Trainer:
         return actor_loss, critic_loss
 
 
-    def _maybe_evaluate(self, ep, actor_loss, critic_loss):
+    def _maybe_evaluate(self, ep):
         if ep % self.eval_interval != 0:
             return
 
         avg_reward_100 = self.metrics.avg_reward(100)
 
-        if "single" in self.evaluators:
-            wr = self.evaluators["single"].evaluate(self.agent)
+        wr_strong = self.evaluators["strong"].evaluate(self.agent)
+        wr_weak   = self.evaluators["weak"].evaluate(self.agent)
 
-            info = (
-                f"[EVAL] ep={ep:5d} | "
-                f"WR={wr:.3f} | "
-                f"R100={avg_reward_100:.2f}"
-            )
-
-            self.metrics.log_eval(wr)
-            score_for_model = wr
-
-        else:
-            wr_strong = self.evaluators["strong"].evaluate(self.agent)
-            wr_weak = self.evaluators["weak"].evaluate(self.agent)
-
-            info = (
-                f"[EVAL] ep={ep:5d} | "
-                f"WR_strong={wr_strong:.3f} | "
-                f"WR_weak={wr_weak:.3f} | "
-                f"R100={avg_reward_100:.2f}"
-            )
-
-            self.metrics.log_eval_dual(wr_strong, wr_weak)
-            score_for_model = wr_strong
+        info = (
+            f"[EVAL] ep={ep:5d} | "
+            f"WR_strong={wr_strong:.3f} | "
+            f"WR_weak={wr_weak:.3f} | "
+            f"R100={avg_reward_100:.2f}"
+        )
 
         self.logger.info(info)
         print(info)
+
+        # ---- WICHTIG ----
+        score_for_model = min(wr_strong, wr_weak)
+
+        self.metrics.log_eval(score_for_model)
 
         if self.early_stopper is not None:
             if self.early_stopper.step(score_for_model):
@@ -265,6 +242,7 @@ class TD3Trainer:
 
         save_metrics(self.metrics, self.metrics_dir)
         MetricsPlotter(self.metrics).save_all(self.plot_dir)
+
 
 
 

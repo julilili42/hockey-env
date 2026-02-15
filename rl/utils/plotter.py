@@ -117,38 +117,19 @@ class MetricsPlotter:
 
 
     def save_winrate(self, save_dir):
-        strong = np.array(self.metrics.winrates_strong)
-        weak = np.array(self.metrics.winrates_weak)
         single = np.array(self.metrics.winrates)
-
-        if len(strong) > 0 and len(weak) > 0:
-            plt.figure()
-
-            plt.plot(strong, marker="o", markersize=3, label="Strong")
-            plt.plot(weak, marker="o", markersize=3, label="Weak")
-
-            plt.axhline(0.5, linestyle="--", color="gray", label="Random")
-            plt.ylim(0, 1)
-
-            plt.xlabel("Evaluation Step")
-            plt.ylabel("Winrate")
-            plt.title("Evaluation Performance")
-            plt.legend(frameon=False)
-
-        elif len(single) > 0:
-            plt.figure()
-
-            plt.plot(single, marker="o", markersize=3, label="Winrate")
-            plt.axhline(0.5, linestyle="--", color="gray", label="Random")
-            plt.ylim(0, 1)
-
-            plt.xlabel("Evaluation Step")
-            plt.ylabel("Winrate")
-            plt.title("Evaluation Performance")
-            plt.legend(frameon=False)
-
-        else:
+        if len(single) == 0:
             return
+
+        plt.figure()
+        plt.plot(single, marker="o", markersize=3, label="Winrate")
+        plt.axhline(0.5, linestyle="--", color="gray", label="Random")
+        plt.ylim(0, 1)
+
+        plt.xlabel("Evaluation Step")
+        plt.ylabel("Winrate")
+        plt.title("Evaluation Performance")
+        plt.legend(frameon=False)
 
         plt.tight_layout()
         plt.savefig(os.path.join(save_dir, "winrate.pdf"))
@@ -156,11 +137,9 @@ class MetricsPlotter:
 
 
 
+
     def save_combined(self, save_dir, window=100):
         rewards_ma = self.metrics.moving_avg(window)
-
-        strong = np.array(self.metrics.winrates_strong)
-        weak = np.array(self.metrics.winrates_weak)
         single = np.array(self.metrics.winrates)
 
         if len(rewards_ma) == 0:
@@ -179,59 +158,26 @@ class MetricsPlotter:
 
         ax2 = ax1.twinx()
 
-        # ---- Joint Mode ----
-        if len(strong) > 0 and len(weak) > 0:
-            x_eval = np.linspace(
-                window - 1,
-                window - 1 + len(rewards_ma),
-                len(strong)
-            )
+        x_eval = np.linspace(
+            window - 1,
+            window - 1 + len(rewards_ma),
+            len(single)
+        )
 
-            ax2.plot(
-                x_eval,
-                strong,
-                color="tab:red",
-                marker="o",
-                markersize=3,
-                label="Winrate (Strong)"
-            )
-
-            ax2.plot(
-                x_eval,
-                weak,
-                linestyle="--",
-                color="tab:orange",
-                alpha=0.8,
-                marker="o",
-                markersize=3,
-                label="Winrate (Weak)"
-            )
-
-        # ---- Single Mode ----
-        elif len(single) > 0:
-            x_eval = np.linspace(
-                window - 1,
-                window - 1 + len(rewards_ma),
-                len(single)
-            )
-
-            ax2.plot(
-                x_eval,
-                single,
-                color="tab:red",
-                marker="o",
-                markersize=3,
-                label="Winrate"
-            )
-        else:
-            return
+        ax2.plot(
+            x_eval,
+            single,
+            color="tab:red",
+            marker="o",
+            markersize=3,
+            label="Winrate"
+        )
 
         ax2.set_ylabel("Winrate")
         ax2.set_ylim(0, 1)
 
         ax1.set_title("Learning Progress")
 
-        # ---- Combined legend ----
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax1.legend(lines1 + lines2, labels1 + labels2, frameon=False)
