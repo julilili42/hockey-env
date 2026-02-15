@@ -21,7 +21,8 @@ class TD3Trainer:
     model_dir,
     metrics_dir,
     plot_dir,
-    max_episodes
+    max_episodes,
+    resume_from=None
 ):
         self.agent = agent
         self.train_env = train_env
@@ -29,6 +30,8 @@ class TD3Trainer:
         self.max_steps = agent.cfg.max_steps
         self.train_iters = agent.cfg.train_iters
         self.eval_interval = agent.cfg.eval_interval
+        self.resume_from = resume_from
+
 
 
         if agent.cfg.training_mode == "joint":
@@ -36,8 +39,15 @@ class TD3Trainer:
                 agent=self.agent,
                 config=self.agent.cfg,
             )
+        elif agent.cfg.training_mode == "single":
+            self.opponent_manager = OpponentManager(
+                agent=self.agent,
+                config=self.agent.cfg,
+                resume_from=self.resume_from
+            )
         else:
-            self.opponent_manager = None
+            return ValueError("Invalid training mode.")
+
 
         self.logger = Logger.get_logger()
         self.metrics = MetricsTracker()
@@ -147,8 +157,9 @@ class TD3Trainer:
         steps = 0
 
         for _ in range(self.max_steps):
-            if self.agent.cfg.training_mode == "joint":
+            if self.agent.cfg.training_mode in ["joint", "single"]:
                 action1 = self.agent.get_action(obs, noise=True)
+
                 obs2 = self.train_env.unwrapped.obs_agent_two()
                 action2 = self.opponent_manager.select_action(obs2)
 
@@ -156,10 +167,6 @@ class TD3Trainer:
                 next_obs, reward, done, trunc, _ = self.train_env.step(joint_action)
 
                 stored_action = action1
-
-            else:
-                stored_action = self.agent.get_action(obs, noise=True)
-                next_obs, reward, done, trunc, _ = self.train_env.step(stored_action)
 
             self.agent.replay_buffer.push(
                 obs, stored_action, reward, next_obs, done or trunc

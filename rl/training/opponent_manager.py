@@ -5,11 +5,12 @@ from rl.training.self_play import SelfPlayManager
 
 
 class OpponentManager:
-    def __init__(self, agent, config):
+    def __init__(self, agent, config, resume_from=None):
         self.agent = agent
         self.cfg = config
         self.current_strong_prob = 0.0
         self.current_weak_prob = 1.0
+        self.resume_from = resume_from
 
 
         self.strong_bot = BasicOpponent(weak=False)
@@ -30,59 +31,64 @@ class OpponentManager:
         self.reset_stats()
 
 
-
     def update_schedule(self, episode, max_episodes):
         progress = episode / max_episodes
 
-        # ------------------------
-        # BOT CURRICULUM
-        # ------------------------
-
-        # Phase 1: very short warmup
-        if progress < 0.1:
-            self.current_strong_prob = 0.0
-            self.current_weak_prob = 1.0
-
-        # Phase 2: introduce strong quickly
-        elif progress < 0.3:
-            self.current_strong_prob = 0.4
-            self.current_weak_prob = 0.6
-
-        # Phase 3: strong dominant
-        elif progress < 0.6:
-            self.current_strong_prob = 0.7
-            self.current_weak_prob = 0.3
-
-        # Phase 4: almost full strong
+        if self.cfg.training_mode == "single":
+            self._update_single(progress)
         else:
-            self.current_strong_prob = 0.85
-            self.current_weak_prob = 0.15
+            self._update_joint(progress)
 
 
-        # ------------------------
-        # SELF-PLAY SCHEDULE
-        # ------------------------
+    def _update_single(self, progress):
+        if self.resume_from is None:
+            strong_prob = 1.0
+            weak_prob = 0.0
+
+        else:
+            if progress < 0.4:
+                strong_prob = 0.7
+                weak_prob = 0.3
+            else:
+                strong_prob = 0.8
+                weak_prob = 0.2
+
+        self._set_bot_probs(strong_prob, weak_prob)
+
+        self.self_play_prob = 0.0
+
+
+    def _update_joint(self, progress):
+        if progress < 0.1:
+            strong_prob, weak_prob = 0.0, 1.0
+        elif progress < 0.3:
+            strong_prob, weak_prob = 0.4, 0.6
+        elif progress < 0.6:
+            strong_prob, weak_prob = 0.7, 0.3
+        else:
+            strong_prob, weak_prob = 0.85, 0.15
+
+        self._set_bot_probs(strong_prob, weak_prob)
 
         if not self.use_self_play:
             self.self_play_prob = 0.0
             return
 
-        # start self-play earlier
         if progress < 0.4:
             self.self_play_prob = 0.0
-
-        # ramp up faster
         elif progress < 0.7:
             ramp = (progress - 0.4) / 0.3
             self.self_play_prob = ramp * self.cfg.self_play_max_prob
-
-        # full self-play
         else:
             self.self_play_prob = self.cfg.self_play_max_prob
 
 
+    def _set_bot_probs(self, strong, weak):
+        if strong + weak <= 0:
+            raise ValueError("Bot probabilities must sum to > 0")
 
-
+        self.current_strong_prob = strong
+        self.current_weak_prob = weak
 
 
     def step(self):

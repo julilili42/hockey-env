@@ -1,8 +1,8 @@
 import gymnasium as gym
 import hockey.hockey_env
 from hockey.hockey_env import BasicOpponent
-import numpy as np
 import os
+import numpy as np
 
 from rl.td3.agent import TD3Agent
 from rl.training.train import TD3Trainer
@@ -21,7 +21,7 @@ from rl.experiment.tracking import (
     save_config,
 )
 from rl.experiment.scheduler import ExperimentScheduler
-from rl.experiment.definitions import pretrained_vs_scratch
+from rl.experiment.definitions import get_pretrained_path
 
 
 def setup_run_dirs(run_name):
@@ -38,12 +38,14 @@ def setup_run_dirs(run_name):
 def build_envs_and_config(mode, eval_vs_weak):
     if mode == "single":
         config = TD3Config.single()
-        train_env = gym.make("Hockey-One-v0")
+        train_env = gym.make("Hockey-One-v0", weak_opponent=False)
 
-        eval_env = gym.make("Hockey-One-v0", weak_opponent=eval_vs_weak)
+        strong_env = gym.make("Hockey-One-v0", weak_opponent=False)
+        weak_env   = gym.make("Hockey-One-v0", weak_opponent=True)
+
         evaluators = {
             "single": Evaluator(
-                eval_env,
+                strong_env if not eval_vs_weak else weak_env,
                 episodes=config.eval_episodes,
                 label="SINGLE"
             )
@@ -90,6 +92,7 @@ def train_td3(train_env, evaluators, config, model_dir, metrics_dir, plot_dir, e
         metrics_dir=metrics_dir,
         plot_dir=plot_dir,
         max_episodes=episodes,
+        resume_from=resume_from
     )
 
 
@@ -143,15 +146,20 @@ def run_experiment(mode, eval_vs_weak, episodes, hidden_size=256, resume_from=No
     MetricsPlotter(trainer.metrics).save_all(plot_dir)
 
 
-def get_pretrained_path(name):
-    base = os.path.dirname(__file__)
-    return os.path.join(base, "pretrained", name)
-
-
 if __name__ == "__main__":
-    scheduler = ExperimentScheduler()
+    pretrained = get_pretrained_path("weak/td3_weak_best.pt")
 
-    for exp in pretrained_vs_scratch():
-        scheduler.add(exp)
+    run_experiment(
+        mode="single",
+        eval_vs_weak=False,   
+        episodes=25_000,
+        hidden_size=256,
+        resume_from=pretrained,
+        seed=420
+    )
+    #scheduler = ExperimentScheduler()
 
-    scheduler.run_all()
+    #for exp in pretrained_vs_scratch():
+    #    scheduler.add(exp)
+
+    #scheduler.run_all()

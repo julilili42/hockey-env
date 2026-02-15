@@ -1,5 +1,5 @@
 from rl.experiment.scheduler import Experiment
-from rl.main import get_pretrained_path
+import os
 
 
 def per_experiments():
@@ -50,16 +50,16 @@ def pretrained_vs_scratch():
             mode="single",
             eval_vs_weak=False,
             episodes=10_000,
-            resume_from=None,
+            resume_from=pretrained,
             seed=1,
         ),
         Experiment(
             mode="single",
             eval_vs_weak=False,
             episodes=10_000,
-            resume_from=pretrained,
+            resume_from=None,
             seed=1,
-        ),
+        )
     ]
 
 
@@ -98,3 +98,8 @@ def noise_annealing_experiments():
 
     return exps
 
+
+
+def get_pretrained_path(name):
+    base = os.path.dirname(os.path.dirname(__file__))
+    return os.path.join(base, "pretrained", name)

@@ -7,7 +7,7 @@ from rl.td3.agent import TD3Agent
 from rl.td3.config import TD3Config
 
 
-MODEL_PATH = "/Users/julian/Documents/Projekte/hockey-env/runs/20260214_080214_joint_eval_strong/models/td3_best.pt"
+MODEL_PATH = "/Users/julian/Documents/Projekte/hockey-env/runs/20260215_002841_single_eval_strong_abcdefg_1/models/td3_best.pt"
 
 
 def main(mode="single"):
@@ -17,7 +17,7 @@ def main(mode="single"):
     """
 
     if mode == "single":
-        env = gym.make("Hockey-One-v0", weak_opponent=False)
+        env = gym.make("Hockey-One-v0", weak_opponent=True)
         config = TD3Config.single()
 
     elif mode == "joint":
@@ -59,4 +59,4 @@ def main(mode="single"):
 
 
 if __name__ == "__main__":
-    main(mode="joint")   
+    main(mode="single")   

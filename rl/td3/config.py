@@ -64,21 +64,22 @@ class TD3Config:
         return TD3Config(
             training_mode="single",
             use_self_play=False,
-            lr_q=5e-4,
-            lr_pol=5e-4,
+            lr_q=4e-4,
+            lr_pol=4e-4,
             wd_q=0.0,
             wd_pol=0.0,
             buffer_size=100_000,
             prioritized_replay=True,
             beta = 0.4, 
-            start_steps=1_000,
+            start_steps=2_000,
             action_noise_scale=0.2,
             target_action_noise_scale=0.2,
             target_action_noise_clip=0.3,
             noise_mode="gaussian",
             early_stopping=False,
-            early_patience=5,
-            use_noise_annealing=False,
+            early_patience=15,
+            use_noise_annealing=True,
+            noise_min_scale = 0.1
         )
 
     @staticmethod
