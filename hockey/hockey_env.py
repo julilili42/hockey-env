@@ -901,3 +901,22 @@ try:
   )
 except Exception as e:
   print(e)
+
+
+
+
+class PolicyOpponent:
+  """
+  Wraps a PyTorch policy (callable) to behave like an opponent with act(obs)->np.array.
+  Policy is expected to output actions in [-1,1] with shape (4,).
+  """
+  def __init__(self, policy, device=None):
+    self.policy = policy
+    self.device = device
+
+  def act(self, obs):
+    import torch
+    with torch.no_grad():
+      x = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
+      a = self.policy(x).squeeze(0).cpu().numpy()
+    return a

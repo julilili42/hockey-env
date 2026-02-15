@@ -41,21 +41,28 @@ class OpponentManager:
 
 
     def _update_single(self, progress):
+        """
+        Desired schedule:
+        - if starting from pretrained weak model:
+            Phase A: 70/30 strong/weak
+            Phase B: 80/10/10 strong/weak/self-play
+        - if training from scratch: (optional) go 100% strong to keep it strict
+        """
         if self.resume_from is None:
-            strong_prob = 1.0
-            weak_prob = 0.0
+            # scratch baseline
+            self._set_bot_probs(strong=1.0, weak=0.0)
+            self.self_play_prob = 0.0
+            return
 
+        # pretrained-start schedule
+        if progress < 0.6:
+            # 70/30 strong/weak
+            self._set_bot_probs(strong=0.7, weak=0.3)
+            self.self_play_prob = 0.0
         else:
-            if progress < 0.4:
-                strong_prob = 0.7
-                weak_prob = 0.3
-            else:
-                strong_prob = 0.8
-                weak_prob = 0.2
-
-        self._set_bot_probs(strong_prob, weak_prob)
-
-        self.self_play_prob = 0.0
+            # 80/10/10 strong/weak/self-play
+            self._set_bot_probs(strong=0.8, weak=0.1)
+            self.self_play_prob = 0.1
 
 
     def _update_joint(self, progress):
@@ -98,7 +105,7 @@ class OpponentManager:
 
     def select_action(self, obs2):
         r = np.random.rand()
-
+        from hockey.hockey_env import PolicyOpponent
         # Self-play branch
         if (
             self.use_self_play
@@ -108,14 +115,8 @@ class OpponentManager:
         ):
             self.stats["self_play"] += 1
             opponent_policy = self.self_play.get_opponent()
-
-            with torch.no_grad():
-                obs2_t = torch.tensor(
-                    obs2,
-                    dtype=torch.float32,
-                    device=self.agent.device,
-                )
-                return opponent_policy(obs2_t).cpu().numpy()
+            opp = PolicyOpponent(opponent_policy, device=self.agent.device)
+            return opp.act(obs2)
 
         # Bot branch
         strong_p = self.current_strong_prob

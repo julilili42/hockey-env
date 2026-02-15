@@ -63,7 +63,10 @@ class TD3Config:
     def single():
         return TD3Config(
             training_mode="single",
-            use_self_play=False,
+            use_self_play=True,
+            self_play_interval = 100,      # statt 500
+            self_play_pool_size = 3,
+            self_play_max_prob = 0.2,
             lr_q=4e-4,
             lr_pol=4e-4,
             wd_q=0.0,

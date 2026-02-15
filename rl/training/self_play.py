@@ -31,6 +31,8 @@ class SelfPlayManager:
 
         self.current_opponent = random.choice(self.pool)
 
+        print(f"[SELF-PLAY] Snapshot added. Pool size={len(self.pool)}")
+
     def get_opponent(self):
         if self.current_opponent is None:
             return None

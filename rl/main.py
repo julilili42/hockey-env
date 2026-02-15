@@ -38,7 +38,8 @@ def setup_run_dirs(run_name):
 def build_envs_and_config(mode, eval_vs_weak):
     if mode == "single":
         config = TD3Config.single()
-        train_env = gym.make("Hockey-One-v0", weak_opponent=False)
+
+        train_env = gym.make("Hockey-v0")
 
         strong_env = gym.make("Hockey-One-v0", weak_opponent=False)
         weak_env   = gym.make("Hockey-One-v0", weak_opponent=True)
@@ -151,12 +152,13 @@ if __name__ == "__main__":
 
     run_experiment(
         mode="single",
-        eval_vs_weak=False,   
-        episodes=25_000,
+        eval_vs_weak=False,
+        episodes=1000,          
         hidden_size=256,
         resume_from=pretrained,
-        seed=420
+        seed=123
     )
+
     #scheduler = ExperimentScheduler()
 
     #for exp in pretrained_vs_scratch():
