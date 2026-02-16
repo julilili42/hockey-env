@@ -1,5 +1,6 @@
 import numpy as np
 from hockey.hockey_env import BasicOpponent
+from hockey.hockey_env import PolicyOpponent
 from rl.training.self_play import SelfPlayManager
 
 
@@ -37,18 +38,17 @@ class OpponentManager:
 
     def _update_single(self, progress):
         if self.resume_from is None:
-            #self._set_bot_probs(strong=0.5, weak=0.5, self_play=0.00)
             self._set_bot_probs(strong=0.00, weak=1.0, self_play=0.00)
             return
 
-        if progress < 0.3:
-            self._set_bot_probs(strong=0.55, weak=0.45, self_play=0.00)
+        if progress < 0.15:
+            self._set_bot_probs(strong=0.3, weak=0.7, self_play=0.0)
 
         elif progress < 0.7:
-            self._set_bot_probs(strong=0.45, weak=0.45, self_play=0.10)
+            self._set_bot_probs(strong=0.6, weak=0.3, self_play=0.1)
 
         else:
-            self._set_bot_probs(strong=0.5, weak=0.4, self_play=0.10)
+            self._set_bot_probs(strong=0.35, weak=0.35, self_play=0.3)
 
 
     def _set_bot_probs(self, strong, weak, self_play):
@@ -66,7 +66,6 @@ class OpponentManager:
 
     def select_action(self, obs2):
         r = np.random.rand()
-        from hockey.hockey_env import PolicyOpponent
         # Self-play branch
         if (
             self.use_self_play

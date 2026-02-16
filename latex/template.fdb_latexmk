@@ -1,14 +1,14 @@
 # Fdb version 4
-["bibtex template"] 1771173845.62239 "template.aux" "template.bbl" "template" 1771173847.01975 0
+["bibtex template"] 1771250555.40479 "template.aux" "template.bbl" "template" 1771250556.52083 0
   "./main.bib" 1771173844.06601 1914 e0a7a5a9c885c3f94409bddfda66b357 ""
   "/usr/local/texlive/2025/texmf-dist/bibtex/bst/base/abbrv.bst" 1292289607 20329 b5fed53e10044d0f8112183785c759b1 ""
-  "template.aux" 1771173846.6355 822 fd7f7e11259178af813117f39af43545 "pdflatex"
+  "template.aux" 1771250556.22364 2134 45eb8c8eed0160effb85987001c14154 "pdflatex"
   (generated)
   "template.bbl"
   "template.blg"
   (rewritten before read)
-["pdflatex"] 1771173845.77597 "/Users/julian/Documents/Projekte/hockey-env/latex/template.tex" "template.pdf" "template" 1771173847.01994 0
-  "/Users/julian/Documents/Projekte/hockey-env/latex/template.tex" 1771173837.46863 4002 d8648ae021dbac8cdb46afcd0048357f ""
+["pdflatex"] 1771250555.54379 "/Users/julian/Documents/Projekte/hockey-env/latex/template.tex" "template.pdf" "template" 1771250556.52097 0
+  "/Users/julian/Documents/Projekte/hockey-env/latex/template.tex" 1771250554.12054 5331 f0a2af69f882bda0d7280334dd5cbeef ""
   "/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/base/8r.enc" 1165713224 4850 80dc9bab7f31fb78a000ccfed0e27cab ""
   "/usr/local/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/adobe/courier/pcrr8r.tfm" 1136768653 1292 bd42be2f344128bff6d35d98474adfe3 ""
@@ -96,6 +96,7 @@
   "/usr/local/texlive/2025/texmf-dist/tex/latex/graphics-def/pdftex.def" 1713382759 19440 9da9dcbb27470349a580fca7372d454b ""
   "/usr/local/texlive/2025/texmf-dist/tex/latex/graphics/color.sty" 1730496337 7245 57f7defed4fb41562dc4b6ca13958ca9 ""
   "/usr/local/texlive/2025/texmf-dist/tex/latex/graphics/graphics.sty" 1730496337 18363 dee506cb8d56825d8a4d020f5d5f8704 ""
+  "/usr/local/texlive/2025/texmf-dist/tex/latex/graphics/graphicx.sty" 1717359999 8010 6f2ad8c2b2ffbd607af6475441c7b5e4 ""
   "/usr/local/texlive/2025/texmf-dist/tex/latex/graphics/keyval.sty" 1717359999 2671 70891d50dac933918b827d326687c6e8 ""
   "/usr/local/texlive/2025/texmf-dist/tex/latex/graphics/mathcolor.ltx" 1667332637 2885 9c645d672ae17285bba324998918efd8 ""
   "/usr/local/texlive/2025/texmf-dist/tex/latex/graphics/trig.sty" 1717359999 4023 2c9f39712cf7b43d3eb93a8bbd5c8f67 ""
@@ -123,10 +124,11 @@
   "/usr/local/texlive/2025/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1766963160 5467155 19efa205003f9ecad95fbbaa6ff24da1 ""
   "/usr/local/texlive/2025/texmf-var/web2c/pdftex/pdflatex.fmt" 1766963120 3345739 046b9dd018af6d5a41c11913d55ac5b6 ""
   "/usr/local/texlive/2025/texmf.cnf" 1741450484 577 418a7058ec8e006d8704f60ecd22c938 ""
-  "template.aux" 1771173846.6355 822 fd7f7e11259178af813117f39af43545 "pdflatex"
-  "template.bbl" 1771173845.7729 859 1f33fec7ab1d0cfda2df8f60baeab1f8 "bibtex template"
-  "template.out" 1771173846.6362 488 efe0d82ea5cd10807e566b40af08e862 "pdflatex"
-  "template.tex" 1771173837.46863 4002 d8648ae021dbac8cdb46afcd0048357f ""
+  "figures/weak_combined.pdf" 1771250502.67215 227923 fd7361d270e49e9723766bd1d82c27d5 ""
+  "template.aux" 1771250556.22364 2134 45eb8c8eed0160effb85987001c14154 "pdflatex"
+  "template.bbl" 1771250555.54164 859 1f33fec7ab1d0cfda2df8f60baeab1f8 "bibtex template"
+  "template.out" 1771250556.22415 1333 e38ee61ce3398e01fc7339393c5100fc "pdflatex"
+  "template.tex" 1771250554.12054 5331 f0a2af69f882bda0d7280334dd5cbeef ""
   (generated)
   "template.aux"
   "template.log"

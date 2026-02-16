@@ -21,9 +21,9 @@ class TD3Config:
     wd_pol: float = 0.0
 
     # Replay buffer
-    prioritized_replay: bool = False # True
+    prioritized_replay: bool = False
     beta: float = 0.15
-    buffer_size: int = 100_000
+    buffer_size: int = 300_000
     batch_size: int = 256
 
     # Exploration
@@ -33,17 +33,17 @@ class TD3Config:
     target_action_noise_clip: float = 0.3
     noise_mode: str = "gaussian"
 
+    # Exploration scheduling
+    use_noise_annealing: bool = True
+    noise_anneal_mode: str = "linear"   # "linear" | "exp"
+    noise_min_scale: float = 0.07
+
     # Early stopping
     early_stopping: bool = False
     early_patience: int = 15
     early_min_delta: float = 0.01
 
-    # Exploration scheduling
-    use_noise_annealing: bool = False # True
-    noise_anneal_mode: str = "linear"   # "linear" | "exp"
-    noise_min_scale: float = 0.1
-
     # Self-play
-    use_self_play: bool = False # True
-    self_play_interval: int = 500
-    self_play_pool_size: int = 5
+    use_self_play: bool = True
+    self_play_interval: int = 250
+    self_play_pool_size: int = 12

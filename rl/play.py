@@ -7,7 +7,7 @@ from rl.td3.agent import TD3Agent
 from rl.td3.config import TD3Config
 
 
-MODEL_PATH = "runs/20260215_002841_single_eval_strong_abcdefg_1/models/td3_best.pt"
+MODEL_PATH = "runs/20260216_113850_single_dual_eval_abcdefg_3(1)/models/td3_best.pt"
 
 
 def main():

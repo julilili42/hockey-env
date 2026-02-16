@@ -17,7 +17,8 @@ from rl.experiment.tracking import (
     save_run_info,
     save_config,
 )
-from rl.experiment.definitions import get_pretrained_path
+from rl.experiment.definitions import get_pretrained_path, table_experiments
+from rl.experiment.scheduler import ExperimentScheduler
 
 
 def setup_run_dirs(run_name):
@@ -82,14 +83,16 @@ def train_td3(train_env, evaluators, config, model_dir, metrics_dir, plot_dir, e
 def run_experiment(mode, episodes, hidden_size=256, resume_from=None, seed = 42, external_config=None):
     set_global_seed(seed)
 
-    run_name = f"{mode}_dual_eval"
+    config, train_env, evaluators = build_envs_and_config()
+
+    run_name = f"{mode}_dual_eval_prio={config.prioritized_replay}_noise={config.noise_mode}_anneal={config.use_noise_annealing}_sp={config.use_self_play}"
+
 
     log_dir, model_dir, metrics_dir, plot_dir, config_dir = setup_run_dirs(run_name)
 
     logger = Logger.get_logger(os.path.join(log_dir, "run.log"))
     logger.info("=== NEW RUN STARTED ===")
 
-    config, train_env, evaluators = build_envs_and_config()
 
     if external_config is not None:
         config = external_config
@@ -126,19 +129,20 @@ def run_experiment(mode, episodes, hidden_size=256, resume_from=None, seed = 42,
 
 
 if __name__ == "__main__":
-    pretrained = get_pretrained_path("weak/td3_weak_best.pt")
+    pretrained_weak_10k = get_pretrained_path("weak_10k/models/td3_best.pt")
+    pretrained_weak_strong_25k = get_pretrained_path("weak_strong_25k/models/td3_best.pt")
 
-    run_experiment(
-        mode="single",
-        episodes=5_000,          
-        hidden_size=256,
-        resume_from= None, #pretrained,
-        seed=420
-    )
+    #run_experiment(
+    #    mode="single",
+    #    episodes=12_000,          
+    #    hidden_size=256,
+    #    resume_from=pretrained_weak_strong_25k,
+    #    seed=999
+    #)
 
-    #scheduler = ExperimentScheduler()
+    scheduler = ExperimentScheduler()
 
-    #for exp in pretrained_vs_scratch():
-    #    scheduler.add(exp)
+    for exp in table_experiments():
+        scheduler.add(exp)
 
-    #scheduler.run_all()
+    scheduler.run_all()

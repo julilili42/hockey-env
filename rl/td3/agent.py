@@ -119,7 +119,11 @@ class TD3Agent:
 
 
     def _init_noise(self):
-        action_dim = self.env.action_space.shape[0] // 2
+        if self.env.action_space.shape[0] == 8:
+            action_dim = 4          
+        else:
+            action_dim = self.env.action_space.shape[0] 
+
 
         if self.cfg.noise_mode == "ornstein-uhlenbeck":
             return OrnsteinUhlenbeckNoise(

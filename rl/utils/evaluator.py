@@ -11,20 +11,26 @@ class Evaluator:
         agent.policy.eval()
 
         wins = []
-        
+        rewards = []
+
         with torch.no_grad():
-          for i in range(self.episodes):
-              obs, _ = self.env.reset(seed=agent.seed + i) #seed=i
-              done = False
+            for i in range(self.episodes):
+                obs, _ = self.env.reset(seed=agent.seed + i)
+                done = False
+                ep_reward = 0.0
 
-              while not done:
-                  action = agent.get_action(
-                      obs, noise=False, eval_mode=True
-                  )
-                  obs, _, done, trunc, info = self.env.step(action)
-                  done = done or trunc
+                while not done:
+                    action = agent.get_action(
+                        obs, noise=False, eval_mode=True
+                    )
+                    obs, reward, done, trunc, info = self.env.step(action)
+                    done = done or trunc
+                    ep_reward += reward
 
-              wins.append(1 if info.get("winner", 0) == 1 else 0)
+                wins.append(1 if info.get("winner", 0) == 1 else 0)
+                rewards.append(ep_reward)
 
         agent.policy.train()
-        return float(np.mean(wins))
+
+        return float(np.mean(wins)), float(np.mean(rewards))
+

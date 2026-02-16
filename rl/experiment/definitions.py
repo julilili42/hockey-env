@@ -40,7 +40,7 @@ def noise_experiments():
 
 
 def pretrained_vs_scratch():
-    pretrained = get_pretrained_path("weak/td3_weak_best.pt")
+    pretrained = get_pretrained_path("weak_10k/models/td3_best.pt")
 
     return [
         Experiment(
@@ -94,5 +94,75 @@ def noise_annealing_experiments():
 
 
 def get_pretrained_path(name):
-    base = os.path.dirname(os.path.dirname(__file__))
+    base = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     return os.path.join(base, "pretrained", name)
+
+
+
+
+def table_experiments():
+    pretrained = get_pretrained_path("weak_10k/models/td3_best.pt")
+
+    seeds = [1, 2, 3]
+    exps = []
+
+    # Scratch baseline
+    for seed in seeds:
+        exps.append(
+            Experiment(
+                mode="single",
+                episodes=12_000,
+                seed=seed,
+                overrides=dict(
+                    prioritized_replay=False,
+                    use_self_play=False,
+                )
+            )
+        )
+
+    # Pretrained fine-tuning
+    for seed in seeds:
+        exps.append(
+            Experiment(
+                mode="single",
+                episodes=12_000,
+                resume_from=pretrained,
+                seed=seed,
+                overrides=dict(
+                    prioritized_replay=False,
+                    use_self_play=False,
+                )
+            )
+        )
+
+    # Pretrained + Prioritized Replay
+    for seed in seeds:
+        exps.append(
+            Experiment(
+                mode="single",
+                episodes=12_000,
+                resume_from=pretrained,
+                seed=seed,
+                overrides=dict(
+                    prioritized_replay=True,
+                    use_self_play=False,
+                )
+            )
+        )
+
+    # Pretrained + Prioritized + Self-Play
+    for seed in seeds:
+        exps.append(
+            Experiment(
+                mode="single",
+                episodes=12_000,
+                resume_from=pretrained,
+                seed=seed,
+                overrides=dict(
+                    prioritized_replay=True,
+                    use_self_play=True,
+                )
+            )
+        )
+
+    return exps

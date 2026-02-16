@@ -9,6 +9,8 @@
 \usepackage{amsfonts}       % blackboard math symbols
 \usepackage{amsmath}       % blackboard math symbols
 \usepackage{amssymb}
+\usepackage{graphicx}
+
 
 \usepackage{lipsum}
 
@@ -42,45 +44,96 @@ In this project, we consider a competitive air hockey environment implemented in
 
 The agent is trained by maximizing the reward signal provided by the environment. The reward includes goal outcomes and additional shaping components. Performance is evaluated separately using the win rate against predefined weak and strong opponents.
 
-The goals of this work are:
+The goals of this work are i) implement the Twin Delayed Deep Deterministic Policy Gradient (TD3) algorithm for continuous control in the hockey environment.
 
-\begin{enumerate}
-    \item Implement the Twin Delayed Deep Deterministic Policy Gradient (TD3) algorithm for continuous control in the hockey environment.
-    \item Analyze the effect of different replay strategies and exploration noise models.
-    \item Investigate the impact of self-play and pretrained initialization on learning stability and final performance.
-    \item Evaluate the learned policy using reward progression and win rate against fixed opponents.
-\end{enumerate}
+\section{Method}
+\label{sec:Method}
 
-
-\section{Method}\label{sec:Method}
 \subsection{Twin Delayed Deep Deterministic Policy Gradients}
 
-Twin Delayed Deep Deterministic Policy Gradients (TD3) \cite{fujimoto2018:TD3} is an off-policy actor-critic algorithm for continuous action spaces. It improves DDPG by reducing overestimation bias and stabilizing training.
+We use Twin Delayed Deep Deterministic Policy Gradients (TD3) \cite{fujimoto2018:TD3}, an off-policy actor–critic algorithm for continuous control.
 
-TD3 uses two independent critic networks, $Q_{\phi_1}$ and $Q_{\phi_2}$. The Bellman target is computed using the smaller of the two target Q-values:
+TD3 employs two critics, $Q_{\phi_1}$ and $Q_{\phi_2}$, and computes the Bellman target via clipped double Q-learning:
 \[
-y = r + \gamma (1-d)\min_{i=1,2} Q_{\phi_i'}(s', a'(s')).
+y = r + \gamma (1-d)\min_{i=1,2} Q_{\phi_i'}(s', \tilde a').
 \]
-This technique is known as clipped double Q-learning. It reduces systematic overestimation.
+Taking the minimum reduces overestimation bias.
 
-TD3 further applies delayed policy updates. The actor is updated less frequently than the critics. This prevents unstable feedback between policy and value estimates.
-
-In addition, TD3 uses target policy smoothing. Noise is added to the target action:
+Target policy smoothing perturbs the target action:
 \[
-a'(s') = \text{clip}\left(\pi_{\theta'}(s') + \text{clip}(\epsilon,-c,c)\right),
-\quad \epsilon \sim \mathcal{N}(0,\sigma^2).
+\tilde a' = \text{clip}\big(\pi_{\theta'}(s') + \epsilon, -c, c\big),
+\quad \epsilon \sim \mathcal{N}(0,\sigma^2),
 \]
-This smooths the Q-function with respect to actions and reduces exploitation of sharp value errors.
+which regularizes the critic by smoothing sharp value peaks.
 
-The actor is trained to maximize the critic estimate:
+Critics minimize the Bellman error
 \[
-\max_{\theta} \mathbb{E}_{s \sim \mathcal{D}}
-\left[ Q_{\phi_1}(s,\pi_\theta(s)) \right].
+\mathcal{L}(\phi_i) =
+\mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}
+\big[(Q_{\phi_i}(s,a)-y)^2\big].
 \]
 
-Together, these three modifications make TD3 significantly more stable than standard DDPG in continuous control problems.
+The actor is updated less frequently (delayed updates) and optimized to maximize $Q_{\phi_1}(s,\pi_\theta(s))$.  
+Target networks are updated via Polyak averaging:
+\[
+\phi' \leftarrow \tau \phi + (1-\tau)\phi'.
+\]
 
 
+\subsection{Replay and Exploration}
+
+Transitions $(s,a,r,s',d)$ are stored in a replay buffer to enable off-policy learning.
+
+We consider both uniform and prioritized sampling, where transitions are drawn proportional to their TD error. Importance weighting is applied to reduce sampling bias.
+
+Exploration is performed in action space:
+\[
+a = \pi_\theta(s) + \epsilon.
+\]
+We evaluate Gaussian, Ornstein–Uhlenbeck, and temporally correlated pink noise.  
+An initial random phase populates the replay buffer.
+
+
+\subsection{Noise Annealing}
+
+To improve stability, exploration noise is annealed over training:
+\[
+\sigma_t = \max\left(\sigma_0 (1 - \tfrac{t}{T}), \sigma_{\min}\right).
+\]
+This enables broad exploration early and increased exploitation later.
+
+
+\subsection{Self-Play and Opponent Scheduling}
+
+Training is conducted in a two-player setting.  
+We combine fixed scripted opponents (weak and strong) with self-play.
+
+Policy snapshots are stored periodically in a finite pool and sampled as opponents during training.  
+Opponent probabilities are scheduled over time: early training emphasizes weak opponents, while later stages increase strong and self-play opponents.
+
+This curriculum improves robustness and reduces overfitting to fixed behaviors.
+
+
+\subsection{Network Architecture}
+
+Actor and critics are fully connected networks with two hidden layers of 256 units and $\tanh$ activations.  
+The actor outputs actions in $[-1,1]$, and critics receive concatenated state–action pairs.
+
+
+
+\section{Experimental Results}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{figures/weak_combined.pdf}
+    \caption{
+    Training performance against the weak opponent.
+    The blue curve shows the 100-episode moving average return with one standard deviation shading.
+    Red markers denote evaluation win rate measured every 200 episodes.
+    The dashed line indicates random performance.
+    }
+    \label{fig:weak_training}
+\end{figure}
 
 
 \bibliographystyle{abbrv}

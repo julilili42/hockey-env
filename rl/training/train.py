@@ -81,7 +81,7 @@ class TD3Trainer:
 
                 actor_loss, critic_loss = self._train_agent(ep)
 
-                self._maybe_evaluate(ep, actor_loss, critic_loss)
+                self._maybe_evaluate(ep)
 
                 if self.opponent_manager is not None and ep % 200 == 0:
                     stats = self.opponent_manager.stats
@@ -114,9 +114,6 @@ class TD3Trainer:
                         self_play=sp_ratio,
                         self_play_prob=self.opponent_manager.current_self_play_prob,
                     )
-
-
-
 
         except KeyboardInterrupt:
             self.logger.warning("Training interrupted manually.")
@@ -212,23 +209,40 @@ class TD3Trainer:
 
         avg_reward_100 = self.metrics.avg_reward(100)
 
-        wr_strong = self.evaluators["strong"].evaluate(self.agent)
-        wr_weak   = self.evaluators["weak"].evaluate(self.agent)
+        if self.resume_from is None:
+            wr_weak, r_weak = self.evaluators["weak"].evaluate(self.agent)
+            wr_strong, r_strong = 0.0, 0.0
 
-        info = (
-            f"[EVAL] ep={ep:5d} | "
-            f"WR_strong={wr_strong:.3f} | "
-            f"WR_weak={wr_weak:.3f} | "
-            f"R100={avg_reward_100:.2f}"
-        )
+            info = (
+                f"[EVAL] ep={ep:5d} | "
+                f"WR_weak={wr_weak:.3f} | "
+                f"R_weak={r_weak:.2f} | "
+                f"R100={avg_reward_100:.2f}"
+            )
+
+            score_for_model = wr_weak
+
+        else:
+            wr_strong, r_strong = self.evaluators["strong"].evaluate(self.agent)
+            wr_weak,   r_weak   = self.evaluators["weak"].evaluate(self.agent)
+
+            info = (
+                f"[EVAL] ep={ep:5d} | "
+                f"WR_strong={wr_strong:.3f} | "
+                f"R_strong={r_strong:.2f} | "
+                f"WR_weak={wr_weak:.3f} | "
+                f"R_weak={r_weak:.2f} | "
+                f"R100={avg_reward_100:.2f}"
+            )
+
+            score_for_model = min(wr_strong, wr_weak)
+
+
+        self.metrics.log_eval(wr_strong, wr_weak, r_strong, r_weak)
 
         self.logger.info(info)
         print(info)
 
-        # ---- WICHTIG ----
-        score_for_model = min(wr_strong, wr_weak)
-
-        self.metrics.log_eval(score_for_model)
 
         if self.early_stopper is not None:
             if self.early_stopper.step(score_for_model):
@@ -242,6 +256,7 @@ class TD3Trainer:
 
         save_metrics(self.metrics, self.metrics_dir)
         MetricsPlotter(self.metrics).save_all(self.plot_dir)
+
 
 
 

@@ -1,0 +1,41 @@
+{
+    "run_settings": {
+        "episodes_planned": 12000,
+        "hidden_size": 256,
+        "seed": 999,
+        "timestamp": "2026-02-16_11-38-50"
+    },
+    "environment": {
+        "eval_env": "Hockey-One-v0",
+        "eval_opponent": "dual"
+    },
+    "initialization": {
+        "used_pretrained": true,
+        "pretrained_path": "/workspace/pretrained/weak_strong_25k/models/td3_best.pt"
+    },
+    "training_features": {
+        "self_play_enabled": true,
+        "self_play_interval": 250,
+        "self_play_pool_size": 12
+    },
+    "td3_core": {
+        "gamma": 0.99,
+        "tau_actor": 0.005,
+        "tau_critic": 0.005,
+        "batch_size": 256,
+        "buffer_size": 300000,
+        "policy_update_freq": 2,
+        "noise_mode": "gaussian",
+        "action_noise_scale": 0.2
+    },
+    "early_stopping": {
+        "enabled": false,
+        "patience": 15,
+        "min_delta": 0.01
+    },
+    "run_result": {
+        "episodes_completed": 12000,
+        "early_stopped": false,
+        "best_winrate": 0.97
+    }
+}

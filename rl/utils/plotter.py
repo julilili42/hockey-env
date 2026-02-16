@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import json
+from types import SimpleNamespace
+
 
 plt.rcParams.update({
     # Figure
@@ -9,7 +12,7 @@ plt.rcParams.update({
     "savefig.dpi": 300,
 
     # Fonts
-    "font.family": "serif",
+    "font.family": "Helvetica",
     "font.size": 11,
     "axes.labelsize": 11,
     "axes.titlesize": 11,
@@ -117,12 +120,18 @@ class MetricsPlotter:
 
 
     def save_winrate(self, save_dir):
-        single = np.array(self.metrics.winrates)
-        if len(single) == 0:
+        strong = np.array(self.metrics.winrate_strong)
+        weak = np.array(self.metrics.winrate_weak)
+        min_wr = np.array(self.metrics.winrate_min)
+
+        if len(min_wr) == 0:
             return
 
         plt.figure()
-        plt.plot(single, marker="o", markersize=3, label="Winrate")
+        plt.plot(strong, label="Strong")
+        plt.plot(weak, label="Weak")
+        plt.plot(min_wr, label="Min", linewidth=2)
+
         plt.axhline(0.5, linestyle="--", color="gray", label="Random")
         plt.ylim(0, 1)
 
@@ -138,53 +147,99 @@ class MetricsPlotter:
 
 
 
-    def save_combined(self, save_dir, window=100):
-        rewards_ma = self.metrics.moving_avg(window)
-        single = np.array(self.metrics.winrates)
 
-        if len(rewards_ma) == 0:
+    def save_combined(self, save_dir, window=100, eval_interval=200):
+        rewards = np.array(self.metrics.episode_rewards)
+        weak_wr = np.array(self.metrics.winrate_weak)
+
+        if len(rewards) < window:
             return
 
         fig, ax1 = plt.subplots()
 
-        # ---- Reward axis ----
-        ax1.plot(
-            rewards_ma,
-            color="tab:blue",
-            label="Reward (MA)"
+        # ----- Moving average + std band -----
+        ma = np.convolve(
+            rewards,
+            np.ones(window) / window,
+            mode="valid"
         )
-        ax1.set_xlabel("Training Progress")
-        ax1.set_ylabel("Reward")
 
+        std = np.array([
+            np.std(rewards[i - window:i])
+            for i in range(window, len(rewards) + 1)
+        ])
+
+        x_reward = np.arange(window - 1, len(rewards))
+
+        ax1.plot(
+            x_reward,
+            ma,
+            color="#1f77b4",
+            linewidth=1.8,
+            label=f"Return ({window}-episode MA)"
+        )
+
+        ax1.fill_between(
+            x_reward,
+            ma - std,
+            ma + std,
+            color="#1f77b4",
+            alpha=0.12
+        )
+
+        ax1.set_xlabel("Episodes")
+        ax1.set_ylabel("Average Return")
+
+        # ----- Winrate axis -----
         ax2 = ax1.twinx()
 
-        x_eval = np.linspace(
-            window - 1,
-            window - 1 + len(rewards_ma),
-            len(single)
-        )
+        if len(weak_wr) > 0:
+            x_eval = np.arange(
+                eval_interval,
+                eval_interval * (len(weak_wr) + 1),
+                eval_interval
+            )
 
-        ax2.plot(
-            x_eval,
-            single,
-            color="tab:red",
-            marker="o",
-            markersize=3,
-            label="Winrate"
+            ax2.plot(
+                x_eval,
+                weak_wr,
+                color="#d62728",
+                marker="o",
+                markersize=3,
+                linestyle="none",
+                label="Winrate (Weak)"
+            )
+
+        # Random baseline
+        ax2.axhline(
+            0.5,
+            linestyle="--",
+            linewidth=1,
+            color="gray",
+            alpha=0.6,
+            label="Random"
         )
 
         ax2.set_ylabel("Winrate")
         ax2.set_ylim(0, 1)
 
-        ax1.set_title("Learning Progress")
-
+        # ----- Clean legend -----
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines1 + lines2, labels1 + labels2, frameon=False)
+
+        ax1.legend(
+            lines1 + lines2,
+            labels1 + labels2,
+            frameon=False,
+            loc="lower right"
+        )
 
         fig.tight_layout()
         plt.savefig(os.path.join(save_dir, "combined.pdf"))
         plt.close()
+
+
+
 
 
 
@@ -232,7 +287,80 @@ class MetricsPlotter:
         plt.close()
 
 
+    def save_eval_rewards(self, save_dir):
+        strong_r = np.array(self.metrics.reward_strong)
+        weak_r = np.array(self.metrics.reward_weak)
 
+        if len(strong_r) == 0 and len(weak_r) == 0:
+            return
+
+        plt.figure()
+
+        if len(strong_r) > 0:
+            plt.plot(strong_r, label="Reward Strong")
+
+        if len(weak_r) > 0:
+            plt.plot(weak_r, label="Reward Weak")
+
+        plt.xlabel("Evaluation Step")
+        plt.ylabel("Average Episode Return")
+        plt.title("Evaluation Rewards")
+        plt.legend(frameon=False)
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, "eval_rewards.pdf"))
+        plt.close()
+
+
+
+    @classmethod
+    def from_json(cls, json_path):
+        with open(json_path, "r") as f:
+            data = json.load(f)
+
+        metrics = SimpleNamespace(**data)
+
+        # Map plural names from JSON to singular names used in plotter
+        mapping = {
+            "winrate_strong": "winrates_strong",
+            "winrate_weak": "winrates_weak",
+            "winrate_min": "winrates_min"
+        }
+
+        for new_name, old_name in mapping.items():
+            if hasattr(metrics, old_name):
+                setattr(metrics, new_name, getattr(metrics, old_name))
+            else:
+                setattr(metrics, new_name, [])
+
+        # Ensure optional fields exist
+        optional_fields = [
+            "episode_rewards",
+            "actor_losses",
+            "critic_losses",
+            "opponent_history",
+            "reward_strong",
+            "reward_weak"
+        ]
+
+        for field in optional_fields:
+            if not hasattr(metrics, field):
+                setattr(metrics, field, [])
+
+        # Add moving average
+        def moving_avg(window):
+            rewards = np.array(metrics.episode_rewards)
+            if len(rewards) < window:
+                return []
+            return np.convolve(
+                rewards,
+                np.ones(window) / window,
+                mode="valid"
+            )
+
+        metrics.moving_avg = moving_avg
+
+        return cls(metrics)
 
 
 
@@ -242,6 +370,7 @@ class MetricsPlotter:
         self.save_rewards(save_dir, window)
         self.save_losses(save_dir)
         self.save_winrate(save_dir)
+        self.save_eval_rewards(save_dir)
         self.save_combined(save_dir)
         self.save_opponents(save_dir)
 
