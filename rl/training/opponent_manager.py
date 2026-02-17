@@ -97,3 +97,8 @@ class OpponentManager:
             "weak": 0,
             "self_play": 0,
         }
+
+    def register_outcome(self, winner):
+        if self.self_play is not None:
+            self.self_play.update_difficulty(winner)
+

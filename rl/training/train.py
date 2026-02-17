@@ -163,7 +163,11 @@ class TD3Trainer:
             steps += 1
 
             if done or trunc:
-                break
+                winner = 1 if reward > 0 else 0
+
+                if self.opponent_manager is not None:
+                    self.opponent_manager.register_outcome(winner)
+
 
         return ep_reward, steps
 

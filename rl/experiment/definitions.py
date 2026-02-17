@@ -65,3 +65,104 @@ def prioritized_selfplay_study(seed):
 
     return exps
 
+
+
+def stage1(seed):
+    return [
+        Experiment(
+            mode="single",
+            episodes=10_000,
+            resume_from=None,
+            seed=seed,
+            overrides=dict(
+                curriculum_name="stage1",
+
+                use_self_play=False,
+                prioritized_replay=False,
+
+                noise_mode="gaussian",
+                use_noise_annealing=True,
+
+                lr_q=4e-4,
+                lr_pol=4e-4,
+            ),
+        )
+    ]
+
+
+def stage2(seed):
+    pretrained = get_pretrained_path("stage_1/models/td3_best.pt")
+
+    return [
+        Experiment(
+            mode="single",
+            episodes=15_000,
+            resume_from=pretrained,
+            seed=seed,
+            overrides=dict(
+                curriculum_name="stage2",
+
+                use_self_play=False,
+                prioritized_replay=False,
+
+                lr_q=3e-4,
+                lr_pol=3e-4,
+
+                noise_min_scale=0.06,
+            ),
+        )
+    ]
+
+
+def stage3(seed):
+    pretrained = get_pretrained_path("stage_2/models/td3_best.pt")
+
+    return [
+        Experiment(
+            mode="single",
+            episodes=20_000,
+            resume_from=pretrained,
+            seed=seed,
+            overrides=dict(
+                curriculum_name="stage3",
+
+                use_self_play=True,
+                self_play_interval=150,
+                self_play_pool_size=25,
+
+                prioritized_replay=False,
+
+                lr_q=2.5e-4,
+                lr_pol=2.5e-4,
+
+                noise_min_scale=0.05,
+            ),
+        )
+    ]
+
+
+def stage4(seed):
+    pretrained = get_pretrained_path("stage_3/models/td3_best.pt")
+
+    return [
+        Experiment(
+            mode="single",
+            episodes=20_000,
+            resume_from=pretrained,
+            seed=seed,
+            overrides=dict(
+                curriculum_name="stage4",
+
+                use_self_play=True,
+                self_play_interval=100,
+                self_play_pool_size=40,
+
+                prioritized_replay=False,
+
+                lr_q=2e-4,
+                lr_pol=2e-4,
+
+                noise_min_scale=0.05,
+            ),
+        )
+    ]
