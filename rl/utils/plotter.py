@@ -12,7 +12,7 @@ plt.rcParams.update({
     "savefig.dpi": 300,
 
     # Fonts
-    "font.family": "Helvetica",
+    "font.family": "DejaVu Sans",
     "font.size": 11,
     "axes.labelsize": 11,
     "axes.titlesize": 11,
