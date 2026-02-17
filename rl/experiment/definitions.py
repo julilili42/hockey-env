@@ -147,22 +147,22 @@ def stage4(seed):
     return [
         Experiment(
             mode="single",
-            episodes=20_000,
+            episodes=35_000,
             resume_from=pretrained,
             seed=seed,
             overrides=dict(
                 curriculum_name="stage4",
 
                 use_self_play=True,
-                self_play_interval=200,
-                self_play_pool_size=15,
+                self_play_interval=500,
+                self_play_pool_size=40,
 
                 prioritized_replay=False,
 
-                lr_q=2.5e-4,
-                lr_pol=2.5e-4,
+                lr_q=1.5e-4,
+                lr_pol=1.5e-4,
 
-                noise_min_scale=0.03,
+                noise_min_scale=0.05,
             ),
         )
     ]
