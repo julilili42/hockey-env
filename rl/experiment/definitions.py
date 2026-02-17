@@ -154,15 +154,16 @@ def stage4(seed):
                 curriculum_name="stage4",
 
                 use_self_play=True,
-                self_play_interval=100,
-                self_play_pool_size=40,
+                self_play_interval=200,
+                self_play_pool_size=15,
 
                 prioritized_replay=False,
 
-                lr_q=2e-4,
-                lr_pol=2e-4,
+                lr_q=2.5e-4,
+                lr_pol=2.5e-4,
 
-                noise_min_scale=0.05,
+                noise_min_scale=0.03,
             ),
         )
     ]
+
