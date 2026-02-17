@@ -61,22 +61,22 @@ class OpponentManager:
 
     def select_action(self, obs2):
         r = np.random.rand()
-        # Self-play branch
+
+        opponent_policy = None
+
+        if self.use_self_play and self.self_play is not None:
+            opponent_policy = self.self_play.get_opponent()
+
         if (
-            self.use_self_play
-            and self.self_play is not None
-            and self.self_play.get_opponent() is not None
+            opponent_policy is not None
             and r < self.current_self_play_prob
         ):
             self.stats["self_play"] += 1
-            opponent_policy = self.self_play.get_opponent()
             opp = PolicyOpponent(opponent_policy, device=self.agent.device)
             return opp.act(obs2)
 
-        # Bot branch
         strong_p = self.current_strong_prob
         weak_p = self.current_weak_prob
-
 
         if strong_p + weak_p <= 0:
             raise ValueError("Bot probabilities must sum to > 0")
@@ -89,6 +89,7 @@ class OpponentManager:
         else:
             self.stats["weak"] += 1
             return self.weak_bot.act(obs2)
+
 
 
     def reset_stats(self):

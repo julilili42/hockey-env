@@ -147,7 +147,7 @@ def stage4(seed):
     return [
         Experiment(
             mode="single",
-            episodes=35_000,
+            episodes=10_000,          
             resume_from=pretrained,
             seed=seed,
             overrides=dict(
@@ -159,11 +159,10 @@ def stage4(seed):
 
                 prioritized_replay=False,
 
-                lr_q=1.5e-4,
-                lr_pol=1.5e-4,
+                lr_q=1e-4,
+                lr_pol=1e-4,
 
-                noise_min_scale=0.05,
+                noise_min_scale=0.07, 
             ),
         )
     ]
-
