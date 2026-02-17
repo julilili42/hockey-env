@@ -47,3 +47,4 @@ class TD3Config:
     use_self_play: bool = True
     self_play_interval: int = 250
     self_play_pool_size: int = 12
+    curriculum_name: str = "ablation"

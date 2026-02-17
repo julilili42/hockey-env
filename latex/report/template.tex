@@ -1,0 +1,316 @@
+\documentclass[11pt]{article}
+
+\usepackage{times}
+\usepackage[utf8]{inputenc} 
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{url}            % simple URL typesetting
+\usepackage{graphics}
+\usepackage{color}
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amsmath}       % blackboard math symbols
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{todonotes}
+\usepackage{subcaption}
+
+
+\usepackage{lipsum}
+
+\usepackage{geometry}
+\geometry{left=2.8cm,right=2.8cm,top=2.6cm,bottom=2.6cm}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\usepackage{hyperref}% should be the last package you include
+
+\newcommand{\theteam}{}
+\newcommand{\team}[1]{\def\theteam{#1}}
+
+
+\fancyhead[L]{\theteam}
+\fancyhead[R]{\thepage}
+\cfoot{}
+
+\setlength{\parindent}{0pt}
+
+\team{alphabet: Julian Jurcevic}
+\title{RL-Course 2025/26: Final Project Report}
+\author{\theteam}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}\label{sec:intro}
+Reinforcement Learning (RL) enables agents to learn decision-making strategies through interaction with an environment. At each time step, the agent observes the current state, selects an action, and receives a scalar reward. The objective is to maximize the expected cumulative reward over time. Continuous control tasks are particularly challenging due to high-dimensional action spaces and instability in value estimation.
+
+In this project, we consider a competitive air hockey environment implemented in Gymnasium~\cite{gymnasium2023} and based on a physics simulation using Box2D~\cite{box2d2023}. Two agents compete in a zero-sum setting. Each player controls translation, rotation, and shooting through continuous actions. The observation space consists of positional and velocity information for both players and the puck. Episodes terminate when a goal is scored or when a time limit is reached.
+
+The agent is trained by maximizing the reward signal provided by the environment. The reward includes goal outcomes and additional shaping components. Performance is evaluated separately using the win rate against predefined weak and strong opponents.
+
+The goals of this work are i) implement the Twin Delayed Deep Deterministic Policy Gradient (TD3) algorithm for continuous control in the hockey environment.
+
+\section{Method}
+\label{sec:Method}
+
+\subsection{Twin Delayed Deep Deterministic Policy Gradients}
+
+We use Twin Delayed Deep Deterministic Policy Gradients (TD3) \cite{fujimoto2018:TD3}, an off-policy actor–critic algorithm for continuous control.
+
+TD3 employs two critics, $Q_{\phi_1}$ and $Q_{\phi_2}$, and computes the Bellman target via clipped double Q-learning:
+\[
+y = r + \gamma (1-d)\min_{i=1,2} Q_{\phi_i'}(s', \tilde a').
+\]
+Taking the minimum reduces overestimation bias.
+
+Target policy smoothing perturbs the target action:
+\[
+\tilde a' = \text{clip}\big(\pi_{\theta'}(s') + \epsilon, -c, c\big),
+\quad \epsilon \sim \mathcal{N}(0,\sigma^2),
+\]
+which regularizes the critic by smoothing sharp value peaks.
+
+Critics minimize the Bellman error
+\[
+\mathcal{L}(\phi_i) =
+\mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}
+\big[(Q_{\phi_i}(s,a)-y)^2\big].
+\]
+
+The actor is updated less frequently (delayed updates) and optimized to maximize $Q_{\phi_1}(s,\pi_\theta(s))$.  
+Target networks are updated via Polyak averaging:
+\[
+\phi' \leftarrow \tau \phi + (1-\tau)\phi'.
+\]
+
+
+\subsection{Replay and Exploration}
+
+Transitions $(s,a,r,s',d)$ are stored in a replay buffer to enable off-policy learning.
+
+We consider both uniform and prioritized sampling, where transitions are sampled proportional to their TD error
+\[
+\delta = Q_{\phi}(s,a) - y,
+\]
+measuring the discrepancy between the current estimate and the Bellman target. 
+Importance weighting corrects the induced sampling bias.
+
+Exploration is performed in action space:
+\[
+a = \pi_\theta(s) + \epsilon.
+\]
+Here, $\pi_\theta$ denotes the deterministic actor with parameters $\theta$.
+We evaluate Gaussian, Ornstein–Uhlenbeck, and temporally correlated pink noise.  
+An initial random phase populates the replay buffer.
+
+
+\subsection{Noise Annealing}
+
+To improve stability, exploration noise is annealed over training:
+\[
+\sigma_t = \max\left(\sigma_0 (1 - \tfrac{t}{T}), \sigma_{\min}\right).
+\]
+This enables broad exploration early and increased exploitation later.
+
+
+\subsection{Self-Play and Opponent Scheduling}
+
+Training is conducted in a two-player setting.  
+We combine fixed scripted opponents (weak and strong) with self-play.
+
+Policy snapshots are stored periodically in a finite pool and sampled as opponents during training.  
+Opponent probabilities are scheduled over time: early training emphasizes weak opponents, while later stages increase strong and self-play opponents.
+
+This curriculum improves robustness and reduces overfitting to fixed behaviors.
+
+
+\subsection{Network Architecture}
+
+Actor and critics are fully connected networks with two hidden layers of 256 units and $\tanh$ activations.  
+The actor outputs actions in $[-1,1]$, and critics receive concatenated state–action pairs.
+
+
+
+\section{Experimental Results}
+\subsection{Experimental Setup}
+
+We conduct three experiments: 
+(i) curriculum training for the final competition agent, 
+(ii) exploration noise comparison, and 
+(iii) self-play and prioritized replay analysis.
+
+For controlled comparisons, we use the Stage II setup and vary only the component under study.
+
+During training, evaluation is performed every 200 episodes with 100 games against the weak and 100 against the strong opponent. 
+Plots show these evaluations for a representative single-seed run.
+
+For Tables~\ref{tab:noise_ablation} and~\ref{tab:final_eval}, the best checkpoint of each run (highest evaluation win rate) is re-evaluated separately. 
+Results report mean and standard deviation over three seeds.
+
+
+\subsection{Curriculum Training}
+
+Curriculum training is used to obtain a versatile competition agent 
+that performs robustly against weak, strong, and previously unseen opponents.
+
+Training proceeds in three phases (Table~\ref{tab:curriculum}).  
+Stage I trains exclusively against the weak opponent to establish reliable puck control.  
+Stage II introduces a mixture of weak and strong opponents with occasional self-play.  
+Stage III further increases exposure to strong and self-play opponents to improve generalization.
+
+Figure~\ref{fig:training_progression} shows that weak-only training quickly improves performance but does not transfer to the strong opponent.  
+The curriculum progressively improves performance against stronger opponents while retaining high win rates against the weak baseline.  
+Stage III yields the strongest overall competition-ready policy (Figure~\ref{fig:final_training}).
+
+
+\begin{table}[t]
+\centering
+\begin{tabular}{llccc}
+\hline
+Stage & Phase & Strong & Weak & Self-Play \\
+\hline
+I (10k) & All & 0.00 & 1.00 & 0.00 \\
+
+II (25k) 
+& Early & 0.55 & 0.45 & 0.00 \\
+& Mid   & 0.45 & 0.45 & 0.10 \\
+& Late  & 0.50 & 0.40 & 0.10 \\
+
+III (12k) 
+& Early & 0.30 & 0.70 & 0.00 \\
+& Mid   & 0.60 & 0.30 & 0.10 \\
+& Late  & 0.35 & 0.35 & 0.30 \\
+
+\hline
+\end{tabular}
+\caption{Piecewise opponent scheduling across curriculum stages.}
+\label{tab:curriculum}
+\end{table}
+
+\subsection{Exploration Noise Comparison}
+
+To analyze the impact of exploration noise, we compare Gaussian, Ornstein-Uhlenbeck, pink, and uniform noise under identical training conditions. All variants use the Stage II curriculum and identical hyperparameters, and only the exploration process differs.
+\begin{table}[t]
+\centering
+\begin{tabular}{lcccc}
+\hline
+Noise Type & WR Weak (\%) & WR Strong (\%) & Return Weak & Return Strong \\
+\hline
+
+Gaussian 
+& 92.50 $\pm$ 4.48 
+& 81.00 $\pm$ 0.47 
+& 8.22 $\pm$ 0.80 
+& 5.69 $\pm$ 0.10 \\
+
+Ornstein--Uhlenbeck 
+& \textbf{94.67 $\pm$ 0.58} 
+& \textbf{89.00 $\pm$ 2.65} 
+& \textbf{8.56 $\pm$ 0.13} 
+& \textbf{7.06 $\pm$ 0.46} \\
+
+Pink 
+& 92.56 $\pm$ 4.30 
+& 86.11 $\pm$ 2.84 
+& 8.17 $\pm$ 0.57 
+& 6.40 $\pm$ 0.34 \\
+
+Uniform 
+& 94.22 $\pm$ 2.84 
+& 80.22 $\pm$ 8.39 
+& 8.38 $\pm$ 0.55 
+& 5.51 $\pm$ 1.51 \\
+
+\hline
+\end{tabular}
+\caption{Exploration noise ablation (mean $\pm$ std across seeds).}
+\label{tab:noise_ablation}
+\end{table}
+
+
+\subsection{Effect of Self-Play and Prioritized Replay}
+Table~\ref{tab:final_eval} shows that self-play does not improve performance against the fixed weak and strong opponents. 
+However, the degradation remains moderate and performance stays within a comparable range. 
+Since the final tournament also includes matches against previously unseen student agents, self-play is retained. 
+It is expected to improve robustness and reduce overfitting to the fixed scripted opponents.
+
+
+PER was implemented to focus updates on transitions with high TD error.
+However, in our setting it consistently reduced stability and final performance. 
+We attribute this to increased variance and overfitting to rare high-error transitions in the competitive environment. 
+Therefore, PER is not used for the final competition agent.
+
+\todo{Rerun 10k weak with weak and strong evaluation!}
+\begin{figure}[t]
+    \centering
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/weak_10k_combined.pdf}
+        \caption{Stage I: Weak-only training}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/weak_strong_25k_combined.pdf}
+        \caption{Stage II: Curriculum training}
+    \end{subfigure}
+    
+    \caption{
+    Training progression during initial and curriculum stages.
+    Blue: 100-episode moving average return.
+    Red/green: evaluation win rate.
+    }
+    \label{fig:training_progression}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.8\linewidth]{figures/final_12k_combined.pdf}
+    \caption{Stage III: Final curriculum refinement.}
+    \label{fig:final_training}
+\end{figure}
+
+\todo{Rerun Experiment using Stage 2!}
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lcccc}
+\hline
+Variant & WR Weak (\%) & WR Strong (\%) & Return Weak & Return Strong \\
+\hline
+
+\textbf{No PER, No Self-Play} 
+& \textbf{93.07 $\pm$ 3.75} 
+& \textbf{78.27 $\pm$ 3.07} 
+& \textbf{8.33 $\pm$ 0.66} 
+& \textbf{5.00 $\pm$ 0.70} \\
+
+No PER, Self-Play 
+& 90.73 $\pm$ 5.90 
+& 72.60 $\pm$ 7.63 
+& 7.62 $\pm$ 1.26 
+& 4.06 $\pm$ 1.56 \\
+
+PER, No Self-Play 
+& 75.80 $\pm$ 9.18 
+& 66.07 $\pm$ 4.69 
+& 4.22 $\pm$ 2.00 
+& 1.99 $\pm$ 1.04 \\
+
+PER, Self-Play 
+& 78.27 $\pm$ 2.23 
+& 65.33 $\pm$ 5.14 
+& 4.71 $\pm$ 0.54 
+& 1.78 $\pm$ 1.01 \\
+
+\hline
+\end{tabular}
+\caption{Final evaluation results (mean $\pm$ std over three random seeds).}
+\label{tab:final_eval}
+\end{table}
+
+\newpage
+
+
+\bibliographystyle{abbrv}
+\bibliography{main}
+
+\end{document}

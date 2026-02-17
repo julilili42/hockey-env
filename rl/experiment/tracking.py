@@ -32,11 +32,12 @@ def create_run_info(
         },
         "environment": {
             "eval_env": "Hockey-One-v0",
-            "eval_opponent": "dual",
+            "eval_opponent": "dual",            
         },
         "initialization": {
             "used_pretrained": resume_from is not None,
             "pretrained_path": resume_from,
+            "curriculum": config.curriculum_name,
         },
         "training_features": {
             "self_play_enabled": config.use_self_play,

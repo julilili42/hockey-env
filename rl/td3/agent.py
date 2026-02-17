@@ -128,9 +128,10 @@ class TD3Agent:
         if self.cfg.noise_mode == "ornstein-uhlenbeck":
             return OrnsteinUhlenbeckNoise(
                 mean=np.zeros(action_dim),
-                std_deviation=self.cfg.action_noise_scale
-                * np.ones(action_dim),
+                std_deviation=self.cfg.action_noise_scale * np.ones(action_dim),
+                dt=1.0
             )
+
 
         if self.cfg.noise_mode == "gaussian":
             return GaussianNoise(
@@ -148,7 +149,7 @@ class TD3Agent:
         if self.cfg.noise_mode == "uniform":
             return UniformNoise(
                 shape=(action_dim,),
-                scale=self.cfg.action_noise_scale
+                scale=self.cfg.action_noise_scale * np.sqrt(3)
             )
 
 

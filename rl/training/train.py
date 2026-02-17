@@ -209,33 +209,19 @@ class TD3Trainer:
 
         avg_reward_100 = self.metrics.avg_reward(100)
 
-        if self.resume_from is None:
-            wr_weak, r_weak = self.evaluators["weak"].evaluate(self.agent)
-            wr_strong, r_strong = 0.0, 0.0
+        wr_strong, r_strong = self.evaluators["strong"].evaluate(self.agent)
+        wr_weak,   r_weak   = self.evaluators["weak"].evaluate(self.agent)
 
-            info = (
-                f"[EVAL] ep={ep:5d} | "
-                f"WR_weak={wr_weak:.3f} | "
-                f"R_weak={r_weak:.2f} | "
-                f"R100={avg_reward_100:.2f}"
-            )
+        info = (
+            f"[EVAL] ep={ep:5d} | "
+            f"WR_strong={wr_strong:.3f} | "
+            f"R_strong={r_strong:.2f} | "
+            f"WR_weak={wr_weak:.3f} | "
+            f"R_weak={r_weak:.2f} | "
+            f"R100={avg_reward_100:.2f}"
+        )
 
-            score_for_model = wr_weak
-
-        else:
-            wr_strong, r_strong = self.evaluators["strong"].evaluate(self.agent)
-            wr_weak,   r_weak   = self.evaluators["weak"].evaluate(self.agent)
-
-            info = (
-                f"[EVAL] ep={ep:5d} | "
-                f"WR_strong={wr_strong:.3f} | "
-                f"R_strong={r_strong:.2f} | "
-                f"WR_weak={wr_weak:.3f} | "
-                f"R_weak={r_weak:.2f} | "
-                f"R100={avg_reward_100:.2f}"
-            )
-
-            score_for_model = min(wr_strong, wr_weak)
+        score_for_model = min(wr_strong, wr_weak)
 
 
         self.metrics.log_eval(wr_strong, wr_weak, r_strong, r_weak)

@@ -1,6 +1,8 @@
 import gymnasium as gym
 import hockey.hockey_env
 import os
+import argparse
+
 
 from rl.td3.agent import TD3Agent
 from rl.training.train import TD3Trainer
@@ -17,7 +19,7 @@ from rl.experiment.tracking import (
     save_run_info,
     save_config,
 )
-from rl.experiment.definitions import get_pretrained_path, table_experiments
+from rl.experiment.definitions import get_pretrained_path, noise_study, prioritized_selfplay_study
 from rl.experiment.scheduler import ExperimentScheduler
 
 
@@ -85,17 +87,15 @@ def run_experiment(mode, episodes, hidden_size=256, resume_from=None, seed = 42,
 
     config, train_env, evaluators = build_envs_and_config()
 
-    run_name = f"{mode}_dual_eval_prio={config.prioritized_replay}_noise={config.noise_mode}_anneal={config.use_noise_annealing}_sp={config.use_self_play}"
+    if external_config is not None:
+        config = external_config
 
+    run_name = f"{mode}_dual_eval_prio={config.prioritized_replay}_noise={config.noise_mode}_anneal={config.use_noise_annealing}_sp={config.use_self_play}"
 
     log_dir, model_dir, metrics_dir, plot_dir, config_dir = setup_run_dirs(run_name)
 
     logger = Logger.get_logger(os.path.join(log_dir, "run.log"))
     logger.info("=== NEW RUN STARTED ===")
-
-
-    if external_config is not None:
-        config = external_config
 
     run_info = create_run_info(
         config=config,
@@ -129,20 +129,20 @@ def run_experiment(mode, episodes, hidden_size=256, resume_from=None, seed = 42,
 
 
 if __name__ == "__main__":
-    pretrained_weak_10k = get_pretrained_path("weak_10k/models/td3_best.pt")
-    pretrained_weak_strong_25k = get_pretrained_path("weak_strong_25k/models/td3_best.pt")
-
-    #run_experiment(
-    #    mode="single",
-    #    episodes=12_000,          
-    #    hidden_size=256,
-    #    resume_from=pretrained_weak_strong_25k,
-    #    seed=999
-    #)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--seed", type=int, required=True)
+    parser.add_argument("--experiment", type=str, required=True)
+    args = parser.parse_args()
 
     scheduler = ExperimentScheduler()
 
-    for exp in table_experiments():
-        scheduler.add(exp)
+    if args.experiment == "noise":
+        for exp in noise_study(args.seed):
+            scheduler.add(exp)
+
+    elif args.experiment == "sp_per":
+        for exp in prioritized_selfplay_study(args.seed):
+            scheduler.add(exp)
 
     scheduler.run_all()
+

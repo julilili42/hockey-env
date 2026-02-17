@@ -148,16 +148,24 @@ class MetricsPlotter:
 
 
 
-    def save_combined(self, save_dir, window=100, eval_interval=200):
+    def save_combined(
+    self,
+    save_dir,
+    window=100,
+    eval_interval=200,
+    show="weak"  # "weak" | "strong" | "both" | "min"
+    ):
         rewards = np.array(self.metrics.episode_rewards)
         weak_wr = np.array(self.metrics.winrate_weak)
+        strong_wr = np.array(self.metrics.winrate_strong)
+        min_wr = np.array(self.metrics.winrate_min)
 
         if len(rewards) < window:
             return
 
         fig, ax1 = plt.subplots()
 
-        # ----- Moving average + std band -----
+        # ---- Moving average + std ----
         ma = np.convolve(
             rewards,
             np.ones(window) / window,
@@ -190,7 +198,7 @@ class MetricsPlotter:
         ax1.set_xlabel("Episodes")
         ax1.set_ylabel("Average Return")
 
-        # ----- Winrate axis -----
+        # ---- Winrate axis ----
         ax2 = ax1.twinx()
 
         if len(weak_wr) > 0:
@@ -199,7 +207,12 @@ class MetricsPlotter:
                 eval_interval * (len(weak_wr) + 1),
                 eval_interval
             )
+        else:
+            x_eval = None
 
+        plotted = []
+
+        if show in ["weak", "both"] and len(weak_wr) > 0:
             ax2.plot(
                 x_eval,
                 weak_wr,
@@ -209,8 +222,32 @@ class MetricsPlotter:
                 linestyle="none",
                 label="Winrate (Weak)"
             )
+            plotted.append(weak_wr)
 
-        # Random baseline
+        if show in ["strong", "both"] and len(strong_wr) > 0:
+            ax2.plot(
+                x_eval,
+                strong_wr,
+                color="#2ca02c",
+                marker="s",
+                markersize=3,
+                linestyle="none",
+                label="Winrate (Strong)"
+            )
+            plotted.append(strong_wr)
+
+        if show == "min" and len(min_wr) > 0:
+            ax2.plot(
+                x_eval,
+                min_wr,
+                color="black",
+                marker="d",
+                markersize=3,
+                linestyle="none",
+                label="Winrate (Min)"
+            )
+            plotted.append(min_wr)
+
         ax2.axhline(
             0.5,
             linestyle="--",
@@ -220,10 +257,17 @@ class MetricsPlotter:
             label="Random"
         )
 
-        ax2.set_ylabel("Winrate")
-        ax2.set_ylim(0, 1)
+        # ---- Dynamic y-limit with small headroom ----
+        if plotted:
+            max_val = max(arr.max() for arr in plotted)
+            upper = min(1.02, max_val + 0.02)
+            ax2.set_ylim(0.0, upper)
+        else:
+            ax2.set_ylim(0.0, 1.02)
 
-        # ----- Clean legend -----
+        ax2.set_ylabel("Winrate")
+
+        # ---- Combined legend ----
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
 
@@ -237,6 +281,7 @@ class MetricsPlotter:
         fig.tight_layout()
         plt.savefig(os.path.join(save_dir, "combined.pdf"))
         plt.close()
+
 
 
 
@@ -364,13 +409,14 @@ class MetricsPlotter:
 
 
 
-    def save_all(self, save_dir, window=100):
+    def save_all(self, save_dir, window=100, show="weak"):
         os.makedirs(save_dir, exist_ok=True)
 
         self.save_rewards(save_dir, window)
         self.save_losses(save_dir)
         self.save_winrate(save_dir)
         self.save_eval_rewards(save_dir)
-        self.save_combined(save_dir)
+        self.save_combined(save_dir, window=window, show=show)
         self.save_opponents(save_dir)
+
 

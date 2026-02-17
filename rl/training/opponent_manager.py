@@ -2,6 +2,7 @@ import numpy as np
 from hockey.hockey_env import BasicOpponent
 from hockey.hockey_env import PolicyOpponent
 from rl.training.self_play import SelfPlayManager
+from rl.training.curricula import CURRICULA
 
 
 class OpponentManager:
@@ -11,6 +12,8 @@ class OpponentManager:
         self.current_strong_prob = 0.0
         self.current_weak_prob = 1.0
         self.resume_from = resume_from
+        self.curriculum = CURRICULA[config.curriculum_name]
+
 
 
         self.strong_bot = BasicOpponent(weak=False)
@@ -37,18 +40,10 @@ class OpponentManager:
 
 
     def _update_single(self, progress):
-        if self.resume_from is None:
-            self._set_bot_probs(strong=0.00, weak=1.0, self_play=0.00)
-            return
-
-        if progress < 0.15:
-            self._set_bot_probs(strong=0.3, weak=0.7, self_play=0.0)
-
-        elif progress < 0.7:
-            self._set_bot_probs(strong=0.6, weak=0.3, self_play=0.1)
-
-        else:
-            self._set_bot_probs(strong=0.35, weak=0.35, self_play=0.3)
+        for threshold, strong, weak, self_play in self.curriculum:
+            if progress < threshold:
+                self._set_bot_probs(strong, weak, self_play)
+                return
 
 
     def _set_bot_probs(self, strong, weak, self_play):

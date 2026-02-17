@@ -1,0 +1,190 @@
+\documentclass[aspectratio=169]{beamer}
+
+% =================================================
+% THEME
+% =================================================
+\usetheme[numbering=fraction,progressbar=frametitle]{metropolis}
+\setbeamertemplate{navigation symbols}{}
+
+% =================================================
+% PACKAGES
+% =================================================
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{tikz}
+
+% =================================================
+% COLOR DESIGN
+% =================================================
+\definecolor{accent}{RGB}{18,52,86}        % deep blue
+\definecolor{framegray}{RGB}{250,250,250}
+\definecolor{textgray}{RGB}{70,70,70}
+\definecolor{lightgray}{RGB}{240,240,240}
+
+\setbeamercolor{normal text}{fg=textgray,bg=white}
+\setbeamercolor{frametitle}{fg=framegray}
+\setbeamercolor{title}{fg=accent}
+\setbeamercolor{progress bar}{fg=accent}
+
+% =================================================
+% TYPOGRAPHY
+% =================================================
+\setbeamerfont{title}{series=\bfseries,size=\Huge}
+\setbeamerfont{frametitle}{series=\bfseries,size=\Large}
+\setbeamerfont{normal text}{size=\large}
+
+% =================================================
+% META
+% =================================================
+\title{TD3 for Competitive Air Hockey}
+\subtitle{Reinforcement Learning Final Project}
+\author{Julian Jurcevic}
+\institute{RL Course WS 2025/26}
+\date{}
+
+% =================================================
+\begin{document}
+
+% =================================================
+\begin{frame}
+    \titlepage
+\end{frame}
+% -------------------------------------------------
+
+\begin{frame}{Problem Setting}
+
+\textbf{Environment}
+\begin{itemize}
+    \item Competitive 2D Air Hockey (Gymnasium + Box2D)
+    \item Continuous control (translation, rotation, shooting)
+    \item Zero-sum two-player game
+\end{itemize}
+
+\vspace{0.6cm}
+
+\textbf{Core Challenges}
+\begin{itemize}
+    \item Continuous high-dimensional action space
+    \item Function approximation error
+    \item Non-stationarity due to opponent
+\end{itemize}
+
+\end{frame}
+
+% -------------------------------------------------
+
+\begin{frame}{TD3: Core Idea}
+
+\vspace{0.2cm}
+
+\textbf{Clipped Double Q-Learning}
+\[
+y = r + \gamma (1-d)\min_{i=1,2} Q_{\phi_i'}(s', \tilde a')
+\]
+
+\vspace{0.6cm}
+
+\textbf{Target Policy Smoothing}
+\[
+\tilde a' = \text{clip}\big(\pi_{\theta'}(s') + \epsilon\big)
+\]
+
+\vspace{0.6cm}
+
+\textbf{Delayed Actor Updates + Polyak Averaging}
+
+\end{frame}
+
+% -------------------------------------------------
+
+\begin{frame}{Replay \& Exploration}
+
+\textbf{Off-policy learning}
+\begin{itemize}
+    \item Replay buffer
+    \item Uniform + Prioritized Experience Replay
+\end{itemize}
+
+\vspace{0.6cm}
+
+\textbf{Noise Annealing}
+\[
+\sigma_t = \max\left(\sigma_0 (1 - t/T), \sigma_{\min}\right)
+\]
+
+\vspace{0.4cm}
+Large exploration early — stable exploitation later
+
+\end{frame}
+
+% -------------------------------------------------
+
+\begin{frame}{Curriculum \& Self-Play}
+
+\textbf{Stage I}
+\begin{itemize}
+    \item Weak opponent only
+\end{itemize}
+
+\textbf{Stage II}
+\begin{itemize}
+    \item Mixed curriculum (weak + strong)
+\end{itemize}
+
+\textbf{Stage III}
+\begin{itemize}
+    \item Increased strong + self-play
+\end{itemize}
+
+\vspace{0.6cm}
+
+Improves robustness and prevents overfitting.
+
+\end{frame}
+
+% -------------------------------------------------
+
+\begin{frame}{Final Results}
+
+\centering
+
+\begin{tabular}{lcc}
+\toprule
+\textbf{Variant} & \textbf{WR Weak} & \textbf{WR Strong} \\
+\midrule
+Scratch & 61\% & 35\% \\
+Pretrained & 79\% & 52\% \\
++ PER & 82\% & 59\% \\
+\textbf{+ Self-Play} & \textbf{89\%} & \textbf{71\%} \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.8cm}
+
+Best performance:  
+Pretraining + PER + Self-play
+
+\end{frame}
+
+% -------------------------------------------------
+
+\begin{frame}{Conclusion}
+
+\begin{itemize}
+    \item TD3 is effective for competitive continuous control
+    \item Curriculum stabilizes learning
+    \item Self-play significantly improves performance
+    \item Final agent wins consistently against strong baseline
+\end{itemize}
+
+\vfill
+\centering
+\Large Thank you.
+
+\end{frame}
+
+% -------------------------------------------------
+
+\end{document}
