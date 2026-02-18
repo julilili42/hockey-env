@@ -1,14 +1,14 @@
 # Fdb version 4
-["bibtex template"] 1771356826.55776 "template.aux" "template.bbl" "template" 1771356827.62818 0
+["bibtex template"] 1771356826.55776 "template.aux" "template.bbl" "template" 1771435419.42643 0
   "./main.bib" 1771173844.06601 1914 e0a7a5a9c885c3f94409bddfda66b357 ""
   "/usr/local/texlive/2025/texmf-dist/bibtex/bst/base/abbrv.bst" 1292289607 20329 b5fed53e10044d0f8112183785c759b1 ""
-  "template.aux" 1771356827.36985 4138 45e20e06969466fdd5547e975ba8c4df "pdflatex"
+  "template.aux" 1771435419.1725 4138 45e20e06969466fdd5547e975ba8c4df "pdflatex"
   (generated)
   "template.bbl"
   "template.blg"
   (rewritten before read)
-["pdflatex"] 1771356826.65768 "/Users/julian/Documents/Projekte/hockey-env/latex/report/template.tex" "template.pdf" "template" 1771356827.62833 0
-  "/Users/julian/Documents/Projekte/hockey-env/latex/report/template.tex" 1771356825.06099 10741 3738b26b8271f5348f619d4884d562f2 ""
+["pdflatex"] 1771435418.25864 "/Users/julian/Documents/Projekte/hockey-env/latex/report/template.tex" "template.pdf" "template" 1771435419.42658 0
+  "/Users/julian/Documents/Projekte/hockey-env/latex/report/template.tex" 1771435417.90999 10749 b61036cf6ca84a3658789ae217efbbed ""
   "/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/base/8r.enc" 1165713224 4850 80dc9bab7f31fb78a000ccfed0e27cab ""
   "/usr/local/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/adobe/courier/pcrr8r.tfm" 1136768653 1292 bd42be2f344128bff6d35d98474adfe3 ""
@@ -200,10 +200,10 @@
   "figures/final_12k_combined.pdf" 1771255959.90616 271517 49b091cc9bafd0cf2ad11c4d5fabf238 ""
   "figures/weak_10k_combined.pdf" 1771250502.67215 227923 fd7361d270e49e9723766bd1d82c27d5 ""
   "figures/weak_strong_25k_combined.pdf" 1771256149.22553 524003 5585e6d15befc1b5cb9f0df6129aecb5 ""
-  "template.aux" 1771356827.36985 4138 45e20e06969466fdd5547e975ba8c4df "pdflatex"
+  "template.aux" 1771435419.1725 4138 45e20e06969466fdd5547e975ba8c4df "pdflatex"
   "template.bbl" 1771356826.65499 859 1f33fec7ab1d0cfda2df8f60baeab1f8 "bibtex template"
-  "template.out" 1771356827.37052 2126 f0b99c188754009c4644555ba86db2bb "pdflatex"
-  "template.tex" 1771356825.06099 10741 3738b26b8271f5348f619d4884d562f2 ""
+  "template.out" 1771435419.17317 2126 f0b99c188754009c4644555ba86db2bb "pdflatex"
+  "template.tex" 1771435417.90999 10749 b61036cf6ca84a3658789ae217efbbed ""
   (generated)
   "template.aux"
   "template.log"

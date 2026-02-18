@@ -14,11 +14,6 @@ STAGE_3 = [
     (1.00, 0.35, 0.35, 0.30),
 ]
 
-STAGE_4 = [
-    (1.00, 0.40, 0.40, 0.20),
-]
-
-
 
 
 NOISE_STUDY = [
@@ -34,7 +29,6 @@ CURRICULA = {
     "stage1": STAGE_1,
     "stage2": STAGE_2,
     "stage3": STAGE_3,
-    "stage4": STAGE_4,
     "ablation": ABLATION,
     "noise_study": NOISE_STUDY
 }

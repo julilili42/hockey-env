@@ -19,7 +19,7 @@ from rl.experiment.tracking import (
     save_run_info,
     save_config,
 )
-from rl.experiment.definitions import noise_study, prioritized_selfplay_study, stage4
+from rl.experiment.definitions import noise_study, prioritized_selfplay_study, stage1, stage2, stage3
 from rl.experiment.scheduler import ExperimentScheduler
 
 
@@ -144,10 +144,17 @@ if __name__ == "__main__":
         for exp in prioritized_selfplay_study(args.seed):
             scheduler.add(exp)
 
-    elif args.experiment == "stage4":
-        for exp in stage4(args.seed):
+    elif args.experiment == "stage1":
+        for exp in stage1(args.seed):
             scheduler.add(exp)
 
+    elif args.experiment == "stage2":
+        for exp in stage2(args.seed):
+            scheduler.add(exp)
+
+    elif args.experiment == "stage3":
+        for exp in stage3(args.seed):
+            scheduler.add(exp)
 
     scheduler.run_all()
 
