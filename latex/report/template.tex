@@ -32,7 +32,7 @@
 
 \setlength{\parindent}{0pt}
 
-\team{alphabet: Julian Jurcevic}
+\team{alphabet-td3: Julian Jurcevic}
 \title{RL-Course 2025/26: Final Project Report}
 \author{\theteam}
 
@@ -53,10 +53,11 @@ We apply Twin Delayed Deep Deterministic Policy Gradient (TD3)~\cite{fujimoto201
 off-policy actor–critic method for continuous control. We make the following contributions:
 \begin{itemize}[itemsep=1pt, topsep=2pt]
     \item A empirical comparison of four exploration noise processes 
-          (Gaussian, Ornstein--Uhlenbeck, pink, and uniform).
+          (Gaussian, Ornstein--Uhlenbeck, Pink, and Uniform).
           
-    \item A three-stage curriculum strategy that combines scripted opponents 
-          with self-play to mitigate non-stationarity and improve generalization.
+    \item A three-stage curriculum strategy~\cite{bengio2009curriculum} 
+      that combines scripted opponents with self-play to mitigate 
+      non-stationarity and improve generalization.
           
     \item An ablation study of prioritized replay and self-play, analyzing 
           their impact on stability, robustness, and benchmark performance.
@@ -72,14 +73,14 @@ We use TD3, an off-policy actor–critic algorithm for continuous control.
 
 TD3 employs two critics, $Q_{\phi_1}$ and $Q_{\phi_2}$, and computes the Bellman target via clipped double Q-learning:
 \[
-y = r + \gamma (1-d)\min_{i=1,2} Q_{\phi_i'}(s', \tilde a').
+y = r + \gamma (1-d)\min_{i=1,2} Q_{\phi_i'}(s', \tilde a')
 \]
 Taking the minimum reduces overestimation bias.
 
 Target policy smoothing perturbs the target action:
 \[
-\tilde a' = \text{clip}\big(\pi_{\theta'}(s') + \epsilon, -c, c\big),
-\quad \epsilon \sim \mathcal{N}(0,\sigma^2),
+\tilde a' = \text{clip}\big(\pi_{\theta'}(s') + \epsilon, -c, c\big)
+\quad \epsilon \sim \mathcal{N}(0,\sigma^2)
 \]
 which regularizes the critic by smoothing sharp value peaks.
 
@@ -87,7 +88,7 @@ Critics minimize the Bellman error
 \[
 \mathcal{L}(\phi_i) =
 \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}
-\big[(Q_{\phi_i}(s,a)-y)^2\big].
+\big[(Q_{\phi_i}(s,a)-y)^2\big]
 \]
 
 The actor is optimized via the deterministic policy gradient objective
@@ -95,7 +96,7 @@ The actor is optimized via the deterministic policy gradient objective
 \mathcal{L}_{actor}(\theta)
 =
 - \mathbb{E}_{s \sim \mathcal{D}}
-\left[ Q_{\phi_1}(s,\pi_\theta(s)) \right],
+\left[ Q_{\phi_1}(s,\pi_\theta(s)) \right]
 \]
 where gradients are taken with respect to the actor parameters $\theta$. 
 The actor is updated less frequently than the critics (delayed policy updates).
@@ -103,7 +104,7 @@ The actor is updated less frequently than the critics (delayed policy updates).
 
 Target networks are updated via Polyak averaging:
 \[
-\phi' \leftarrow \tau \phi + (1-\tau)\phi'.
+\phi' \leftarrow \tau \phi + (1-\tau)\phi'
 \]
 
 
@@ -112,9 +113,9 @@ Target networks are updated via Polyak averaging:
 Transitions $(s,a,r,s',d)$ are stored in a replay buffer to enable off-policy learning.
 
 
-We consider both uniform and prioritized sampling, where transitions are sampled proportional to their TD error
+We consider both uniform and prioritized sampling~\cite{schaul2016per}, where transitions are sampled proportional to their TD error
 \[
-\delta_i = Q_{\phi_i}(s,a) - y, \quad i \in \{1,2\},
+\delta_i = Q_{\phi_i}(s,a) - y, \quad i \in \{1,2\}
 \]
 measuring the discrepancy between the current estimate and the Bellman target.
 In the TD3 setting, priorities are computed from the mean absolute TD error across both critics.
@@ -122,10 +123,10 @@ Sampling bias is partially corrected via importance weighting.
 
 Exploration is performed in action space:
 \[
-a = \pi_\theta(s) + \epsilon.
+a = \pi_\theta(s) + \epsilon
 \]
 Here, $\pi_\theta$ denotes the deterministic actor with parameters $\theta$.
-We evaluate Gaussian, Ornstein--Uhlenbeck, and pink noise.
+We evaluate Gaussian, Ornstein--Uhlenbeck~\cite{lillicrap2015ddpg}, and pink noise~\cite{eberhard2023pink}.
 An initial random phase populates the replay buffer.
 
 
@@ -133,21 +134,18 @@ An initial random phase populates the replay buffer.
 
 To improve stability, exploration noise is annealed over training:
 \[
-\sigma_t = \max\left(\sigma_0 (1 - \tfrac{t}{T}), \sigma_{\min}\right).
+\sigma_t = \max\left(\sigma_0 (1 - \tfrac{t}{T}), \sigma_{\min}\right)
 \]
 This enables broad exploration early and increased exploitation later.
 
 
 \subsection{Self-Play and Opponent Scheduling}
 
-Training is conducted in a two-player setting.  
-We combine fixed scripted opponents (weak and strong) with self-play.
+Training is conducted in a two-player setting. We combine fixed scripted opponents (weak and strong) with self-play~\cite{bansal2018}.
 
-Policy snapshots are stored periodically in a finite pool and sampled as opponents during training.  
-Opponent probabilities are scheduled over time: early training emphasizes weak opponents, while later stages increase strong and self-play opponents.
+Policy snapshots are stored every $k$ episodes in a fixed-size pool of size $N_{\text{pool}}$. When the pool exceeds $N_{\text{pool}}$, the oldest snapshot is discarded. Opponents are sampled proportionally to a difficulty score updated after each game: the score increases by factor $1.2$ after a loss and decays by factor $0.95$ after a win. This biases training toward opponents the agent currently struggles against. We set $k{=}150$ and $N_{\text{pool}}{=}25$ for Stage~II and III.
 
-This curriculum improves robustness and reduces overfitting to fixed behaviors.
-
+Opponent probabilities are scheduled over time: early training emphasizes weak opponents, while later stages increase strong and self-play opponents. The scheduling proportions were determined empirically by monitoring win rates against both opponents during training. Stage transitions were triggered when weak win rates plateaued above 85\%, indicating readiness for stronger opposition. The exact proportions reflect manual tuning rather than systematic optimization, which is a limitation of this work.
 
 \subsection{Network Architecture}
 
@@ -200,7 +198,7 @@ Due to the limited number of seeds, observed differences should be interpreted a
 
 \subsection{Curriculum Training}
 
-Curriculum training is used to obtain a versatile competition agent 
+Curriculum training~\cite{bengio2009curriculum} is used to obtain a versatile competition agent 
 that performs robustly against weak, strong, and previously unseen opponents.
 
 Training proceeds in three phases (Table~\ref{tab:curriculum}).  
@@ -208,9 +206,9 @@ Stage I trains exclusively against the weak opponent to establish reliable puck 
 Stage II introduces a mixture of weak and strong opponents with occasional self-play.  
 Stage III further increases exposure to strong and self-play opponents to improve generalization.
 
-Figure~\ref{fig:training_progression} shows that weak-only training quickly improves performance but does not transfer to the strong opponent.  
+Figure~\ref{fig:stage1} shows that weak-only training quickly improves performance but does not transfer to the strong opponent.  
 The curriculum progressively improves performance against stronger opponents while retaining high win rates against the weak baseline.  
-Stage III yields the strongest overall competition-ready policy (Figure~\ref{fig:final_training}).
+Stage III yields the strongest overall competition-ready policy (Figure~\ref{fig:stage3}).
 
 
 \begin{table}[!t]
@@ -276,13 +274,12 @@ Uniform
 \label{tab:noise_ablation}
 \end{table}
 Ornstein--Uhlenbeck (OU) noise outperformed all alternatives, particularly against the strong opponent (89\% vs.\ 81\% for Gaussian).
-A plausible explanation is that the temporal correlation of OU noise produces smoother action trajectories, which is advantageous in a fast-paced physics environment where erratic, uncorrelated perturbations may disrupt otherwise well-formed motor sequences.
+A plausible explanation is that the temporal correlation of OU noise produces smoother action trajectories. In a fast-paced physics environment, uncorrelated perturbations can disrupt otherwise stable motor sequences.
 Pink noise, which also introduces temporal correlation, performed second-best, consistent with this hypothesis.
 Uniform noise showed the highest variance across seeds, suggesting unstable exploration behavior.
 
 \subsection{Effect of Self-Play and Prioritized Replay}
-Self-play slightly reduced performance against fixed scripted opponents as seen in Table~\ref{tab:final_eval}, which is expected. The policy adapts to a moving target (past versions of itself) rather than the specific behaviors of the benchmark bots.
-This trade-off is acceptable for tournament settings where opponents are unknown, and the retained self-play component is intended to improve robustness rather than benchmark win rates.
+Self-play slightly reduced performance against fixed scripted opponents (Table~\ref{tab:final_eval}), as the policy adapts to past versions of itself rather than benchmark bots. Difficulty-weighted sampling limits exploitation of weak snapshots, but pool diversity decreases as policies converge, explaining diminishing returns. Population-based training could mitigate this. Despite lower benchmark scores, self-play is retained to improve robustness against unseen tournament opponents.
 
 PER was implemented to focus updates on transitions with high TD error.
 However, in our setting it consistently reduced stability and final performance. 
@@ -291,31 +288,35 @@ Therefore, PER is not used for the final competition agent.
 
 \begin{figure}[!t]
     \centering
+
     \begin{subfigure}{0.48\linewidth}
         \centering
         \includegraphics[width=\linewidth]{figures/weak_10k_combined.pdf}
-        \caption{Stage I: Weak-only training}
+        \caption{Stage I: Weak-only training.}
+        \label{fig:stage1}
     \end{subfigure}
     \hfill
     \begin{subfigure}{0.48\linewidth}
         \centering
         \includegraphics[width=\linewidth]{figures/weak_strong_25k_combined.pdf}
-        \caption{Stage II: Curriculum training}
+        \caption{Stage II: Curriculum training.}
+        \label{fig:stage2}
     \end{subfigure}
-    
-    \caption{
-    Training progression during initial and curriculum stages.
-    Blue: 100-episode moving average return.
-    Red/green: evaluation win rate.
-    }
-    \label{fig:training_progression}
-\end{figure}
 
-\begin{figure}[!t]
-    \centering
-    \includegraphics[width=0.8\linewidth]{figures/final_12k_combined.pdf}
-    \caption{Stage III: Final curriculum refinement.}
-    \label{fig:final_training}
+    \vspace{0.3em}
+
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/final_12k_combined.pdf}
+        \caption{Stage III: Final curriculum refinement.}
+        \label{fig:stage3}
+    \end{subfigure}
+
+    \caption{
+    Training progression across curriculum stages.
+    Blue: return (100-episode MA). Red/green: win rate.
+    }
+    \label{fig:training_all}
 \end{figure}
 
 \begin{table}[!t]
@@ -360,12 +361,14 @@ All training plots reflect single-seed runs due to computational constraints, li
 The three-seed evaluation in Tables~\ref{tab:noise_ablation} and~\ref{tab:final_eval} provides more reliable estimates, but statistically significant conclusions would require additional seeds.
 Future work could explore adaptive opponent scheduling and population-based self-play to further improve generalization.
 
-\section{Conclusion}
-This project demonstrated that TD3 can be successfully applied to a competitive continuous-control air hockey environment. 
 
-Curriculum learning proved crucial: weak-only training led to fast but narrow improvements, while staged opponent scheduling produced a more robust and versatile agent. Among exploration strategies, Ornstein--Uhlenbeck noise yielded the most stable and strongest results. Self-play slightly reduced performance against fixed scripted opponents but is retained to improve robustness against unseen agents. Prioritized experience replay decreased stability and was therefore not used in the final model.
+\section{Discussion and Conclusion}
 
-Overall, the final agent achieves stable training dynamics and competitive benchmark performance while maintaining robustness for the tournament setting.
+Curriculum learning was the most impactful design choice. Without it, the agent overfits to weak-opponent strategies (Figure~\ref{fig:stage1}). Staged scheduling resolves this while retaining base competence.
+
+OU noise yielded the clearest gain ($+8\%$ against strong, Table~\ref{tab:noise_ablation}), likely due to temporally correlated exploration producing smoother actions suited to fast physics dynamics. PER consistently hurt performance (Table~\ref{tab:final_eval}), possibly because non-stationary opponents amplify the variance of priority-based sampling. Self-play reduced benchmark scores but is retained for tournament robustness; pool diversity remains a limitation as snapshots converge over training.
+
+Overall, TD3 with curriculum learning, OU noise, and self-play produces a stable, competitive agent for the air hockey environment.
 
 \newpage
 

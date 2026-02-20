@@ -4,36 +4,51 @@
 \providecommand\HyField@AuxAddToCoFields[2]{}
 \citation{gymnasium2023}
 \citation{fujimoto2018:TD3}
+\citation{bengio2009curriculum}
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {2}Method}{1}{section.2}\protected@file@percent }
 \newlabel{sec:Method}{{2}{1}{Method}{section.2}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Twin Delayed Deep Deterministic Policy Gradients}{1}{subsection.2.1}\protected@file@percent }
+\citation{schaul2016per}
+\citation{lillicrap2015ddpg}
+\citation{eberhard2023pink}
+\citation{bansal2018}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Replay and Exploration}{2}{subsection.2.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Noise Annealing}{2}{subsection.2.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Self-Play and Opponent Scheduling}{2}{subsection.2.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}Network Architecture}{2}{subsection.2.5}\protected@file@percent }
+\citation{bengio2009curriculum}
 \@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Key hyperparameters of the final TD3 agent.}}{3}{table.caption.1}\protected@file@percent }
 \providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
 \newlabel{tab:hyperparams}{{1}{3}{Key hyperparameters of the final TD3 agent}{table.caption.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}Network Architecture}{3}{subsection.2.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {3}Experimental Results}{3}{section.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Experimental Setup}{3}{subsection.3.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Curriculum Training}{3}{subsection.3.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Exploration Noise Comparison}{3}{subsection.3.3}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Piecewise opponent scheduling across curriculum stages.}}{4}{table.caption.2}\protected@file@percent }
 \newlabel{tab:curriculum}{{2}{4}{Piecewise opponent scheduling across curriculum stages}{table.caption.2}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Exploration noise ablation (mean $\pm $ std across seeds).}}{4}{table.caption.3}\protected@file@percent }
 \newlabel{tab:noise_ablation}{{3}{4}{Exploration noise ablation (mean $\pm $ std across seeds)}{table.caption.3}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Final evaluation results (mean $\pm $ std over three random seeds).}}{4}{table.caption.6}\protected@file@percent }
-\newlabel{tab:final_eval}{{4}{4}{Final evaluation results (mean $\pm $ std over three random seeds)}{table.caption.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Exploration Noise Comparison}{4}{subsection.3.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Effect of Self-Play and Prioritized Replay}{4}{subsection.3.4}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces  Training progression during initial and curriculum stages. Blue: 100-episode moving average return. Red/green: evaluation win rate. }}{5}{figure.caption.4}\protected@file@percent }
-\newlabel{fig:training_progression}{{1}{5}{Training progression during initial and curriculum stages. Blue: 100-episode moving average return. Red/green: evaluation win rate}{figure.caption.4}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Stage III: Final curriculum refinement.}}{5}{figure.caption.5}\protected@file@percent }
-\newlabel{fig:final_training}{{2}{5}{Stage III: Final curriculum refinement}{figure.caption.5}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Limitations}{5}{subsection.3.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}Conclusion}{5}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Limitations}{4}{subsection.3.5}\protected@file@percent }
+\newlabel{fig:stage1}{{1a}{5}{Stage I: Weak-only training}{figure.caption.4}{}}
+\newlabel{sub@fig:stage1}{{a}{5}{Stage I: Weak-only training}{figure.caption.4}{}}
+\newlabel{fig:stage2}{{1b}{5}{Stage II: Curriculum training}{figure.caption.4}{}}
+\newlabel{sub@fig:stage2}{{b}{5}{Stage II: Curriculum training}{figure.caption.4}{}}
+\newlabel{fig:stage3}{{1c}{5}{Stage III: Final curriculum refinement}{figure.caption.4}{}}
+\newlabel{sub@fig:stage3}{{c}{5}{Stage III: Final curriculum refinement}{figure.caption.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces  Training progression across curriculum stages. Blue: return (100-episode MA). Red/green: win rate. }}{5}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:training_all}{{1}{5}{Training progression across curriculum stages. Blue: return (100-episode MA). Red/green: win rate}{figure.caption.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Final evaluation results (mean $\pm $ std over three random seeds).}}{5}{table.caption.5}\protected@file@percent }
+\newlabel{tab:final_eval}{{4}{5}{Final evaluation results (mean $\pm $ std over three random seeds)}{table.caption.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Discussion and Conclusion}{5}{section.4}\protected@file@percent }
 \bibstyle{abbrv}
 \bibdata{main}
-\bibcite{gymnasium2023}{1}
-\bibcite{fujimoto2018:TD3}{2}
-\gdef \@abspage@last{7}
+\bibcite{bansal2018}{1}
+\bibcite{bengio2009curriculum}{2}
+\bibcite{eberhard2023pink}{3}
+\bibcite{gymnasium2023}{4}
+\bibcite{fujimoto2018:TD3}{5}
+\bibcite{lillicrap2015ddpg}{6}
+\bibcite{schaul2016per}{7}
+\gdef \@abspage@last{6}

@@ -1,5 +1,20 @@
 \begin{thebibliography}{1}
 
+\bibitem{bansal2018}
+T.~Bansal, J.~Pachocki, S.~Sidor, I.~Sutskever, and I.~Mordatch.
+\newblock Emergent complexity via multi-agent competition.
+\newblock In {\em International Conference on Learning Representations (ICLR)}, 2018.
+
+\bibitem{bengio2009curriculum}
+Y.~Bengio, J.~Louradour, R.~Collobert, and J.~Weston.
+\newblock Curriculum learning.
+\newblock In {\em Proceedings of the 26th International Conference on Machine Learning (ICML)}, pages 41--48. ACM, 2009.
+
+\bibitem{eberhard2023pink}
+O.~Eberhard, J.~Hollenstein, C.~Pinneri, and G.~Martius.
+\newblock Pink noise is all you need: Colored exploration for deep reinforcement learning.
+\newblock In {\em International Conference on Learning Representations (ICLR)}, 2023.
+
 \bibitem{gymnasium2023}
 {Farama Foundation}.
 \newblock Gymnasium: A standard api for reinforcement learning environments.
@@ -10,5 +25,15 @@
 S.~Fujimoto, H.~van Hoof, and D.~Meger.
 \newblock Addressing function approximation error in actor-critic methods.
 \newblock In J.~Dy and A.~Krause, editors, {\em Proceedings of the 35th International Conference on Machine Learning}, volume~80 of {\em Proceedings of Machine Learning Research}, pages 1587--1596, Stockholmsmässan, Stockholm Sweden, 10--15 Jul 2018. PMLR.
+
+\bibitem{lillicrap2015ddpg}
+T.~P. Lillicrap, J.~J. Hunt, A.~Pritzel, N.~Heess, T.~Erez, Y.~Tassa, D.~Silver, and D.~Wierstra.
+\newblock Continuous control with deep reinforcement learning.
+\newblock {\em arXiv preprint arXiv:1509.02971}, 2015.
+
+\bibitem{schaul2016per}
+T.~Schaul, J.~Quan, I.~Antonoglou, and D.~Silver.
+\newblock Prioritized experience replay.
+\newblock In {\em International Conference on Learning Representations}, 2016.
 
 \end{thebibliography}
