@@ -12,7 +12,7 @@
 \usepackage{graphicx}
 \usepackage{todonotes}
 \usepackage{subcaption}
-
+\usepackage{enumitem}
 
 \usepackage{lipsum}
 
@@ -39,21 +39,36 @@
 \begin{document}
 \maketitle
 
-\section{Introduction}\label{sec:intro}
-Reinforcement Learning (RL) enables agents to learn decision-making strategies through interaction with an environment. At each time step, the agent observes the current state, selects an action, and receives a scalar reward. The objective is to maximize the expected cumulative reward over time. Continuous control tasks are particularly challenging due to high-dimensional action spaces and instability in value estimation.
 
-In this project, we consider a competitive air hockey environment implemented in Gymnasium~\cite{gymnasium2023} and based on a physics simulation using Box2D~\cite{box2d2023}. Two agents compete in a zero-sum setting. Each player controls translation, rotation, and shooting through continuous actions. The observation space consists of positional and velocity information for both players and the puck. Episodes terminate when a goal is scored or when a time limit is reached.
+\section{Introduction}
+Two-player reinforcement learning is challenging due to non-stationarity: as the opponent 
+improves, the learning target changes. In continuous-control air hockey, this difficulty is 
+amplified by fast dynamics, sparse terminal rewards, and the need to combine positioning, 
+shooting, and defense within a single policy. Policies that overfit to one opponent often 
+fail to generalize, which is critical in competitive settings.
 
-The agent is trained by maximizing the reward signal provided by the environment. The reward includes goal outcomes and additional shaping components. Performance is evaluated separately using the win rate against predefined weak and strong opponents.
+We study a two-player continuous air hockey environment implemented using the Gymnasium API \cite{gymnasium2023}. In this setting, two agents control paddles via four continuous actuators: translation in $x$ and $y$, rotation, and shooting. The 18-dimensional state encodes positions, velocities, and angles of both players and the puck. Episodes end after a goal or 250 steps. Terminal rewards are $\pm10$, supplemented by shaped rewards for puck proximity and direction.
 
-The goals of this work are i) implement the Twin Delayed Deep Deterministic Policy Gradient (TD3) algorithm for continuous control in the hockey environment.
+We apply Twin Delayed Deep Deterministic Policy Gradient (TD3)~\cite{fujimoto2018:TD3}, an 
+off-policy actor–critic method for continuous control. We make the following contributions:
+\begin{itemize}[itemsep=1pt, topsep=2pt]
+    \item A empirical comparison of four exploration noise processes 
+          (Gaussian, Ornstein--Uhlenbeck, pink, and uniform).
+          
+    \item A three-stage curriculum strategy that combines scripted opponents 
+          with self-play to mitigate non-stationarity and improve generalization.
+          
+    \item An ablation study of prioritized replay and self-play, analyzing 
+          their impact on stability, robustness, and benchmark performance.
+\end{itemize}
+The primary objective is to develop a competitive agent for the final tournament.
 
 \section{Method}
 \label{sec:Method}
 
 \subsection{Twin Delayed Deep Deterministic Policy Gradients}
 
-We use Twin Delayed Deep Deterministic Policy Gradients (TD3) \cite{fujimoto2018:TD3}, an off-policy actor–critic algorithm for continuous control.
+We use TD3, an off-policy actor–critic algorithm for continuous control.
 
 TD3 employs two critics, $Q_{\phi_1}$ and $Q_{\phi_2}$, and computes the Bellman target via clipped double Q-learning:
 \[
@@ -75,7 +90,17 @@ Critics minimize the Bellman error
 \big[(Q_{\phi_i}(s,a)-y)^2\big].
 \]
 
-The actor is updated less frequently (delayed updates) and optimized to maximize $Q_{\phi_1}(s,\pi_\theta(s))$.  
+The actor is optimized via the deterministic policy gradient objective
+\[
+\mathcal{L}_{actor}(\theta)
+=
+- \mathbb{E}_{s \sim \mathcal{D}}
+\left[ Q_{\phi_1}(s,\pi_\theta(s)) \right],
+\]
+where gradients are taken with respect to the actor parameters $\theta$. 
+The actor is updated less frequently than the critics (delayed policy updates).
+
+
 Target networks are updated via Polyak averaging:
 \[
 \phi' \leftarrow \tau \phi + (1-\tau)\phi'.
@@ -86,19 +111,21 @@ Target networks are updated via Polyak averaging:
 
 Transitions $(s,a,r,s',d)$ are stored in a replay buffer to enable off-policy learning.
 
+
 We consider both uniform and prioritized sampling, where transitions are sampled proportional to their TD error
 \[
-\delta = Q_{\phi}(s,a) - y,
+\delta_i = Q_{\phi_i}(s,a) - y, \quad i \in \{1,2\},
 \]
-measuring the discrepancy between the current estimate and the Bellman target. 
-Importance weighting corrects the induced sampling bias.
+measuring the discrepancy between the current estimate and the Bellman target.
+In the TD3 setting, priorities are computed from the mean absolute TD error across both critics.
+Sampling bias is partially corrected via importance weighting.
 
 Exploration is performed in action space:
 \[
 a = \pi_\theta(s) + \epsilon.
 \]
 Here, $\pi_\theta$ denotes the deterministic actor with parameters $\theta$.
-We evaluate Gaussian, Ornstein–Uhlenbeck, and temporally correlated pink noise.  
+We evaluate Gaussian, Ornstein--Uhlenbeck, and pink noise.
 An initial random phase populates the replay buffer.
 
 
@@ -137,14 +164,39 @@ We conduct three experiments:
 (ii) exploration noise comparison, and 
 (iii) self-play and prioritized replay analysis.
 
-For controlled comparisons, we use the Stage II setup and vary only the component under study.
+For controlled comparisons, we use the Stage II setup and vary only the component under study. 
+Unless stated otherwise, all experiments share the same TD3 configuration summarized in Table~\ref{tab:hyperparams}.
+
+\begin{table}[!t]
+\centering
+\begin{tabular}{ll}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Discount factor $\gamma$ & 0.99 \\
+Actor / Critic LR & $2\cdot10^{-4}$ \\
+Target update $\tau$ & 0.005 \\
+Policy update frequency & 2 \\
+Batch size & 256 \\
+Replay buffer size & 300k \\
+Target noise (scale / clip) & 0.2 / 0.3 \\
+Exploration noise & OU (default; best in ablation) \\
+Hidden units & 2 layers $\times$ 256 \\
+\hline
+\end{tabular}
+\caption{Key hyperparameters of the final TD3 agent.}
+\label{tab:hyperparams}
+\end{table}
+
 
 During training, evaluation is performed every 200 episodes with 100 games against the weak and 100 against the strong opponent. 
+Model selection during training uses $\min(\text{WR}_{\text{weak}}, \text{WR}_{\text{strong}})$ as score. 
+This enforces robustness by penalizing policies that overfit to a single opponent.
 Plots show these evaluations for a representative single-seed run.
 
 For Tables~\ref{tab:noise_ablation} and~\ref{tab:final_eval}, the best checkpoint of each run (highest evaluation win rate) is re-evaluated separately. 
 Results report mean and standard deviation over three seeds.
-
+Due to the limited number of seeds, observed differences should be interpreted as empirical trends rather than statistically verified effects.
 
 \subsection{Curriculum Training}
 
@@ -161,7 +213,7 @@ The curriculum progressively improves performance against stronger opponents whi
 Stage III yields the strongest overall competition-ready policy (Figure~\ref{fig:final_training}).
 
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering
 \begin{tabular}{llccc}
 \hline
@@ -186,9 +238,8 @@ III (12k)
 \end{table}
 
 \subsection{Exploration Noise Comparison}
-
 To analyze the impact of exploration noise, we compare Gaussian, Ornstein-Uhlenbeck, pink, and uniform noise under identical training conditions. All variants use the Stage II curriculum and identical hyperparameters, and only the exploration process differs.
-\begin{table}[t]
+\begin{table}[!t]
 \centering
 \begin{tabular}{lcccc}
 \hline
@@ -224,22 +275,21 @@ Uniform
 \caption{Exploration noise ablation (mean $\pm$ std across seeds).}
 \label{tab:noise_ablation}
 \end{table}
-
+Ornstein--Uhlenbeck (OU) noise outperformed all alternatives, particularly against the strong opponent (89\% vs.\ 81\% for Gaussian).
+A plausible explanation is that the temporal correlation of OU noise produces smoother action trajectories, which is advantageous in a fast-paced physics environment where erratic, uncorrelated perturbations may disrupt otherwise well-formed motor sequences.
+Pink noise, which also introduces temporal correlation, performed second-best, consistent with this hypothesis.
+Uniform noise showed the highest variance across seeds, suggesting unstable exploration behavior.
 
 \subsection{Effect of Self-Play and Prioritized Replay}
-Table~\ref{tab:final_eval} shows that self-play does not improve performance against the fixed weak and strong opponents. 
-However, the degradation remains moderate and performance stays within a comparable range. 
-Since the final tournament also includes matches against previously unseen student agents, self-play is retained. 
-It is expected to improve robustness and reduce overfitting to the fixed scripted opponents.
-
+Self-play slightly reduced performance against fixed scripted opponents as seen in Table~\ref{tab:final_eval}, which is expected. The policy adapts to a moving target (past versions of itself) rather than the specific behaviors of the benchmark bots.
+This trade-off is acceptable for tournament settings where opponents are unknown, and the retained self-play component is intended to improve robustness rather than benchmark win rates.
 
 PER was implemented to focus updates on transitions with high TD error.
 However, in our setting it consistently reduced stability and final performance. 
-We attribute this to increased variance and overfitting to rare high-error transitions in the competitive environment. 
+This may be due to increased update variance and sensitivity to rare high-error transitions in the competitive setting.
 Therefore, PER is not used for the final competition agent.
 
-\todo{Rerun 10k weak with weak and strong evaluation!}
-\begin{figure}[t]
+\begin{figure}[!t]
     \centering
     \begin{subfigure}{0.48\linewidth}
         \centering
@@ -261,16 +311,14 @@ Therefore, PER is not used for the final competition agent.
     \label{fig:training_progression}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure}[!t]
     \centering
     \includegraphics[width=0.8\linewidth]{figures/final_12k_combined.pdf}
     \caption{Stage III: Final curriculum refinement.}
     \label{fig:final_training}
 \end{figure}
 
-\todo{Rerun Experiment using Stage 2!}
-
-\begin{table}[t]
+\begin{table}[!t]
 \centering
 \begin{tabular}{lcccc}
 \hline
@@ -306,6 +354,18 @@ PER, Self-Play
 \caption{Final evaluation results (mean $\pm$ std over three random seeds).}
 \label{tab:final_eval}
 \end{table}
+
+\subsection{Limitations}
+All training plots reflect single-seed runs due to computational constraints, limiting the interpretability of curve-level comparisons.
+The three-seed evaluation in Tables~\ref{tab:noise_ablation} and~\ref{tab:final_eval} provides more reliable estimates, but statistically significant conclusions would require additional seeds.
+Future work could explore adaptive opponent scheduling and population-based self-play to further improve generalization.
+
+\section{Conclusion}
+This project demonstrated that TD3 can be successfully applied to a competitive continuous-control air hockey environment. 
+
+Curriculum learning proved crucial: weak-only training led to fast but narrow improvements, while staged opponent scheduling produced a more robust and versatile agent. Among exploration strategies, Ornstein--Uhlenbeck noise yielded the most stable and strongest results. Self-play slightly reduced performance against fixed scripted opponents but is retained to improve robustness against unseen agents. Prioritized experience replay decreased stability and was therefore not used in the final model.
+
+Overall, the final agent achieves stable training dynamics and competitive benchmark performance while maintaining robustness for the tournament setting.
 
 \newpage
 
